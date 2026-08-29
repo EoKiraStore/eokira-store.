@@ -22,7 +22,7 @@ const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, products: new Map(), cart: [], orders: [], submitting: false };
+const state = { user: null, account: null, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -123,7 +123,9 @@ async function loadProducts() {
   try {
     const data = await api("/products", {}, false);
     state.products = new Map(data.products.map(product => [product.id, product]));
+    state.discountConfig = data.discountConfig || { active: false };
     updateDisplayedPrices();
+    renderCart();
   } catch (error) {
     notify("Não foi possível carregar os preços do servidor.", "error");
   }
@@ -141,10 +143,12 @@ function updateDisplayedPrices() {
   if (wons) {
     const price = $("[data-wons]")?.closest(".card-bottom")?.querySelector("strong");
     if (price) price.textContent = `${currencyFromCents(wons.priceCents)} por 1B`;
+    if (wonsQuantity) wonsQuantity.max = String(wons.maxQuantity);
   }
   if (roll) {
     const price = $("[data-power-roll]")?.closest(".card-bottom")?.querySelector("strong");
     if (price) price.textContent = `${currencyFromCents(roll.priceCents)} cada`;
+    if (rollQuantity) rollQuantity.max = String(roll.maxQuantity);
   }
   updateWonsPrice();
   updateRollPrice();
@@ -156,31 +160,56 @@ function addItem(productId, quantity) {
     notify("Aguarde os produtos terminarem de carregar.", "error");
     return;
   }
-  const safeQuantity = Math.max(1, Math.min(100000, Math.floor(Number(quantity) || 1)));
+  const requested = Math.max(1, Math.floor(Number(quantity) || 1));
+  const maximum = Number(itemProduct.maxQuantity || 1);
   const existing = state.cart.find(item => item.productId === productId);
-  if (existing) existing.quantity = Math.min(100000, existing.quantity + safeQuantity);
-  else state.cart.push({ productId, name: itemProduct.name, quantity: safeQuantity, unitPriceCents: itemProduct.priceCents });
+  const combined = (existing?.quantity || 0) + requested;
+  if (combined > maximum) {
+    notify(`O limite desse produto é ${maximum}.`, "error");
+    return;
+  }
+  if (existing) existing.quantity = combined;
+  else state.cart.push({ productId, name: itemProduct.name, quantity: requested, unitPriceCents: itemProduct.priceCents, discountEligible: itemProduct.discountEligible === true });
   renderCart();
   hideAll();
   show(drawer);
 }
 
+function discountAvailableForPreview() {
+  if (!state.account || state.account.discountState === "AVAILABLE") return true;
+  if (state.account.discountState !== "RESERVED" || !state.account.discountExpiresAt) return false;
+  return new Date(state.account.discountExpiresAt) <= new Date();
+}
+
+function previewFinancials() {
+  const subtotalCents = state.cart.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+  const discountBaseCents = state.cart.reduce((sum, item) => sum + (item.discountEligible ? item.unitPriceCents * item.quantity : 0), 0);
+  const config = state.discountConfig;
+  const eligible = discountAvailableForPreview() && config.active === true && subtotalCents >= Number(config.minSubtotalCents || 0) && discountBaseCents > 0;
+  const calculated = eligible ? Math.floor(discountBaseCents * Number(config.percent || 0) / 100) : 0;
+  const discountCents = Math.min(calculated, Number(config.maxDiscountCents || 0));
+  return { subtotalCents, discountBaseCents, discountCents, totalCents: subtotalCents - discountCents };
+}
+
 function renderCart() {
-  const totalCents = state.cart.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+  const preview = previewFinancials();
   const count = state.cart.length;
   $("#cart-count").textContent = count;
   $("#side-cart-count").textContent = count;
-  $("#cart-total").textContent = currencyFromCents(totalCents);
+  $("#cart-total").textContent = currencyFromCents(preview.totalCents);
   $("#checkout-button").disabled = count === 0 || state.submitting;
   $("#cart-items").innerHTML = count
-    ? state.cart.map((item, index) => `
+    ? `${state.cart.map((item, index) => `
       <div class="cart-item">
         <div>
           <strong>${escapeHtml(item.name)}</strong>
           <small>${item.quantity} × ${currencyFromCents(item.unitPriceCents)}</small>
         </div>
         <button data-remove="${index}" aria-label="Remover ${escapeHtml(item.name)}">×</button>
-      </div>`).join("")
+      </div>`).join("")}
+      <div class="discount-row"><span>Subtotal estimado</span><strong>${currencyFromCents(preview.subtotalCents)}</strong></div>
+      ${preview.discountCents ? `<div class="discount-row"><span>Desconto estimado</span><strong>− ${currencyFromCents(preview.discountCents)}</strong></div>` : ""}
+      <p class="server-price-note">Prévia apenas. O servidor recalcula e confirma todos os valores.</p>`
     : '<p class="empty">Seu carrinho está vazio.</p>';
   document.querySelectorAll("[data-remove]").forEach(button => {
     button.onclick = () => {
@@ -193,8 +222,12 @@ function renderCart() {
 function renderCheckoutSummary() {
   const summary = $("#checkout-summary");
   if (!summary) return;
-  const total = state.cart.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
-  summary.innerHTML = `${state.cart.map(item => `<p><span>${item.quantity} × ${escapeHtml(item.name)}</span><strong>${currencyFromCents(item.unitPriceCents * item.quantity)}</strong></p>`).join("")}<p class="checkout-total"><span>Total</span><strong>${currencyFromCents(total)}</strong></p>`;
+  const preview = previewFinancials();
+  summary.innerHTML = `${state.cart.map(item => `<p><span>${item.quantity} × ${escapeHtml(item.name)}</span><strong>${currencyFromCents(item.unitPriceCents * item.quantity)}</strong></p>`).join("")}
+    <p><span>Subtotal estimado</span><strong>${currencyFromCents(preview.subtotalCents)}</strong></p>
+    ${preview.discountCents ? `<p><span>Desconto estimado</span><strong>− ${currencyFromCents(preview.discountCents)}</strong></p>` : ""}
+    <p class="checkout-total"><span>Total estimado</span><strong>${currencyFromCents(preview.totalCents)}</strong></p>
+    <small>O valor oficial será retornado pelo servidor.</small>`;
 }
 
 async function submitOrders(event) {
@@ -205,29 +238,26 @@ async function submitOrders(event) {
   const button = event.currentTarget.querySelector("button[type='submit']");
   const original = button.textContent;
   button.disabled = true;
-  button.textContent = "Criando pedido seguro...";
-  const pendingItems = [...state.cart];
-  const results = await Promise.allSettled(pendingItems.map(item => api("/createOrder", {
-    method: "POST",
-    body: JSON.stringify({ productId: item.productId, quantity: item.quantity }),
-  })));
-  const failures = [];
-  const created = [];
-  results.forEach((result, index) => {
-    if (result.status === "fulfilled") created.push(result.value);
-    else failures.push(pendingItems[index]);
-  });
-  state.cart = failures;
-  state.submitting = false;
-  button.disabled = false;
-  button.textContent = original;
-  renderCart();
-  if (created.length) {
+  button.textContent = "Calculando no servidor...";
+  try {
+    const order = await api("/createOrder", {
+      method: "POST",
+      body: JSON.stringify({ items: state.cart.map(item => ({ productId: item.productId, quantity: item.quantity })) }),
+    });
+    state.cart = [];
+    await loadAccount();
+    renderCart();
     hideAll();
-    notify(`${created.length} pedido(s) criado(s). Aguardando pagamento.`, "success");
+    const discountMessage = order.discountCents > 0 ? ` Desconto reservado: ${currencyFromCents(order.discountCents)}.` : "";
+    notify(`Pedido criado por ${currencyFromCents(order.totalCents)}.${discountMessage}`, "success");
     await openOrders();
-  } else {
-    notify(results[0]?.reason?.message || "Não foi possível criar o pedido.", "error");
+  } catch (error) {
+    notify(error.message || "Não foi possível criar o pedido.", "error");
+  } finally {
+    state.submitting = false;
+    button.disabled = false;
+    button.textContent = original;
+    renderCart();
   }
 }
 
@@ -236,8 +266,9 @@ function statusLabel(status) {
 }
 
 function orderProduct(order) {
-  const first = order.items?.[0];
-  return first ? `${first.quantity} × ${first.name}` : "Pedido";
+  return order.items?.length
+    ? order.items.map(item => `${item.quantity} × ${item.name}`).join(" + ")
+    : "Pedido";
 }
 
 function renderOrders() {
@@ -255,8 +286,8 @@ function renderOrders() {
       <div class="ticket-data">
         <span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span>
         <h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
-        <p>Total confirmado pelo servidor: ${currencyFromCents(order.totalCents)}</p>
-        <small>Pedido salvo com segurança no banco de dados</small>
+        <p>Subtotal ${currencyFromCents(order.subtotalCents)} · Desconto ${currencyFromCents(order.discountCents)} · Total ${currencyFromCents(order.totalCents)}</p>
+        <small>${escapeHtml(order.paymentStatus || "UNPAID")} · valores congelados no pedido</small>
       </div>
       <button data-order="${escapeHtml(order.id)}">Ver pedido →</button>
     </article>`).join("") : '<p class="empty">Você ainda não possui pedidos. Finalize sua compra para começar.</p>';
@@ -293,8 +324,10 @@ function openOrder(orderId) {
       <span>Conta: ${escapeHtml(state.user?.email || "")}</span>
     </div>
     <div class="order-summary">
-      <div><small>VALOR</small><strong>${currencyFromCents(order.totalCents)}</strong></div>
-      <div><small>STATUS</small><strong>${escapeHtml(statusLabel(order.status))}</strong></div>
+      <div><small>SUBTOTAL</small><strong>${currencyFromCents(order.subtotalCents)}</strong></div>
+      <div><small>DESCONTO</small><strong>− ${currencyFromCents(order.discountCents)}</strong></div>
+      <div><small>TOTAL OFICIAL</small><strong>${currencyFromCents(order.totalCents)}</strong></div>
+      <div><small>PAGAMENTO</small><strong>${escapeHtml(order.paymentStatus || "UNPAID")}</strong></div>
     </div>
     <div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O PIX automático será conectado na próxima etapa.</p></div></div>
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
@@ -386,3 +419,6 @@ onAuthStateChanged(auth, async user => {
 renderCart();
 renderReviews();
 loadProducts();
+
+
+
