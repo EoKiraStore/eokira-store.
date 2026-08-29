@@ -61,3 +61,6 @@ body { background-image: linear-gradient(115deg,rgba(9,3,31,.36),rgba(13,24,72,.
 
 .social-links { display: flex; gap: 8px; }.social { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #3e3979; border-radius: 5px; color: #d6d4ef; font-size: .72rem; font-weight: 700; }.social span { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: #5865f2; color: #fff; font-size: .67rem; }.social.tiktok span { background: linear-gradient(135deg,#27f5e6,#fa3b83); }.social:hover { border-color: #84eaff; color: #fff; }@media (max-width:760px) { .social-links { order: 4; width: 100%; } }
 
+
+.login-button.admin { border-color:#7ee7ff; background:linear-gradient(100deg,rgba(122,70,255,.34),rgba(30,178,255,.28)); color:#bff5ff; box-shadow:0 0 22px rgba(71,190,255,.18); }
+
