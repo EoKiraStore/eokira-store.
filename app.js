@@ -1,29 +1,388 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-const firebaseApp=initializeApp({apiKey:"AIzaSyDin9ClqtwrbiXQ0JugerTttEwa6pMh9es",authDomain:"eokirastore.firebaseapp.com",projectId:"eokirastore",storageBucket:"eokirastore.firebasestorage.app",messagingSenderId:"20118408183",appId:"1:20118408183:web:7c93a13da00a3e71c63cf2"});
-const auth=getAuth(firebaseApp),googleProvider=new GoogleAuthProvider(),ADMIN_EMAIL="contadvzadas202020@gmail.com";
-let signedUser=null;
-async function enterWithGoogle(){try{await setPersistence(auth,browserLocalPersistence);await signInWithPopup(auth,googleProvider)}catch(error){const button=document.querySelector('[data-auth]');if(button)button.textContent=error.code==='auth/unauthorized-domain'?'Autorize o domínio no Firebase':'Não foi possível entrar'}}
-function updateAccount(user){signedUser=user;const button=document.querySelector('[data-auth]');if(!button)return;if(!user){button.textContent='Entrar com Google';button.classList.remove('admin');button.title='';return}const isAdmin=user.email?.toLowerCase()===ADMIN_EMAIL;button.textContent=isAdmin?'Admin · Sair':`${user.displayName?.split(' ')[0]||'Minha conta'} · Sair`;button.classList.toggle('admin',isAdmin);button.title=user.email||''}
-onAuthStateChanged(auth,updateAccount);
-document.addEventListener('click',event=>{const button=event.target.closest('[data-auth]');if(!button)return;event.preventDefault();signedUser?signOut(auth):enterWithGoogle()},true);
-document.addEventListener('click',event=>{const purchase=event.target.closest('[data-product],[data-power-roll],[data-wons],#checkout-button');if(!purchase||signedUser)return;event.preventDefault();event.stopImmediatePropagation();enterWithGoogle()},true);
-const pixKey='5119c4ef-348a-4e65-b6aa-6eeb731503d7',pixPayload='00020126330014br.gov.bcb.pix0111159108299475204000053039865802BR5925ADRIANO LEONARDO DOS SANT6009SAO PAULO62070503***6304AEA7',state={cart:[],currentOrder:null},$=s=>document.querySelector(s),currency=v=>v===0?'Sob consulta':v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}),overlay=$('#overlay'),drawer=$('#cart-drawer');
-function show(el){if(!el)return;el.classList.add('is-open');overlay?.classList.add('is-open')}function hideAll(){document.querySelectorAll('.is-open').forEach(el=>el.classList.remove('is-open'))}function tickets(){return JSON.parse(localStorage.getItem('ink-pity-tickets')||'[]')}function renderCart(){const total=state.cart.reduce((s,i)=>s+i.price,0),firstPurchase=!tickets().length,discount=firstPurchase?total*.1:0,final=total-discount;$('#cart-count').textContent=state.cart.length;$('#cart-total').textContent=currency(final);$('#checkout-button').disabled=!state.cart.length;$('#cart-items').innerHTML=state.cart.length?`${state.cart.map((i,n)=>`<div class="cart-item"><div><strong>${i.name}</strong><small>${currency(i.price)}</small></div><button data-remove="${n}">×</button></div>`).join('')}${discount?`<div class="discount-row"><span>Desconto de primeira compra</span><strong>− ${currency(discount)}</strong></div>`:''}`:'<p class="empty">Seu carrinho está vazio.</p>';document.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{state.cart.splice(+b.dataset.remove,1);renderCart()})}function renderTickets(){const saved=tickets();$('#tickets-list').innerHTML=saved.length?saved.map(t=>`<article class="ticket"><div><span class="ticket-status">ABERTO</span><h3>#${t.id} · ${t.product}</h3><p>${t.name} · Roblox: ${t.roblox}</p><small>${t.messages.length} mensagem(ns) · ${t.date}</small></div><button data-ticket="${t.id}">Abrir ticket →</button></article>`).join(''):'<p class="empty">Você ainda não possui tickets. Finalize um pedido para abrir o primeiro.</p>';document.querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>openTicket(+b.dataset.ticket))}function openTicket(id){const t=tickets().find(x=>x.id===id);$('.tickets-modal .modal-box').innerHTML=`<button class="close" data-close>×</button><p class="eyebrow"><i></i> TICKET #${t.id}</p><h2>${t.product}</h2><p class="ticket-info">Cliente: ${t.name} · Roblox: ${t.roblox}</p><div class="messages">${t.messages.map(m=>`<div class="message ${m.author==='Você'?'mine':''}"><small>${m.author}</small><p>${m.text}</p></div>`).join('')}</div><form class="message-form" id="message-form"><input required placeholder="Escreva uma mensagem…" /><button class="button primary">Enviar</button></form>`;$('#message-form').onsubmit=e=>{e.preventDefault();t.messages.push({author:'Você',text:e.currentTarget.querySelector('input').value});localStorage.setItem('ink-pity-tickets',JSON.stringify(tickets().map(x=>x.id===id?t:x)));openTicket(id)}}
-document.querySelectorAll('[data-product]').forEach(b=>b.onclick=()=>{state.cart.push({name:b.dataset.product,price:+b.dataset.price});renderCart();show(drawer)});document.querySelectorAll('[data-open-cart]').forEach(b=>b.onclick=()=>show(drawer));document.querySelectorAll('[data-open-tickets]').forEach(b=>b.onclick=()=>{renderTickets();show($('#tickets-modal'))});document.addEventListener('click',e=>{if(e.target.closest('[data-close]'))hideAll()});overlay.onclick=hideAll;$('#checkout-button').onclick=()=>{hideAll();show($('#checkout-modal'))};$('#checkout-form').onsubmit=e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target)),price=state.cart.reduce((s,i)=>s+i.price,0),discount=!tickets().length?price*.1:0;state.currentOrder={...d,product:state.cart.map(i=>i.name).join(' + '),price,finalPrice:price-discount};$('#pix-value').textContent=currency(state.currentOrder.finalPrice);hideAll();show($('#pix-modal'))};$('#copy-pix').onclick=()=>{navigator.clipboard?.writeText(pixKey);$('#copy-pix').textContent='Chave PIX copiada!'};$('#confirm-payment').onclick=()=>{const order={...state.currentOrder,id:Math.floor(10000+Math.random()*89999),date:new Date().toLocaleDateString('pt-BR'),messages:[{author:'Atendimento',text:'Olá! Seu ticket foi aberto. Envie qualquer detalhe adicional do seu pedido por aqui.'}]};localStorage.setItem('ink-pity-tickets',JSON.stringify([order,...tickets()]));state.cart=[];renderCart();hideAll();renderTickets();show($('#tickets-modal'))};renderCart();
-document.querySelectorAll('[data-open-products]').forEach(button=>button.onclick=()=>show($('#produtos')));
-document.querySelectorAll('[data-open-reviews]').forEach(button=>button.onclick=()=>show($('#reviews-modal')));document.querySelectorAll('[data-open-faq]').forEach(button=>button.onclick=()=>show($('#faq-modal')));const baseRenderCart=renderCart;renderCart=function(){baseRenderCart();$('#side-cart-count').textContent=state.cart.length};renderCart();
-document.querySelectorAll('[data-open-cart]').forEach(button=>button.onclick=()=>{hideAll();show(drawer)});document.querySelectorAll('[data-open-products]').forEach(button=>button.onclick=()=>{hideAll();show($('#produtos'))});document.querySelectorAll('[data-open-tickets]').forEach(button=>button.onclick=()=>{hideAll();renderTickets();show($('#tickets-modal'))});document.querySelectorAll('[data-open-reviews]').forEach(button=>button.onclick=()=>{hideAll();show($('#reviews-modal'))});document.querySelectorAll('[data-open-faq]').forEach(button=>button.onclick=()=>{hideAll();show($('#faq-modal'))});document.querySelectorAll('[data-product]').forEach(button=>button.onclick=()=>{state.cart.push({name:button.dataset.product,price:+button.dataset.price});renderCart();hideAll();show(drawer)});$('[data-power-roll]').onclick=()=>{const quantity=Math.max(1,Math.floor(+rollQuantity.value||1));state.cart.push({name:`${quantity} Power Rolls`,price:quantity*.2});renderCart();hideAll();show(drawer)};
-const wonsQuantity=$('#wons-quantity'),wonsPrice=$('#wons-price');function updateWonsPrice(){wonsPrice.textContent=currency(Math.max(1,Math.floor(+wonsQuantity.value||1))*5)}wonsQuantity.oninput=updateWonsPrice;updateWonsPrice();$('[data-wons]').onclick=()=>{const quantity=Math.max(1,Math.floor(+wonsQuantity.value||1));state.cart.push({name:`${quantity}B de Wons`,price:quantity*5});renderCart();hideAll();show(drawer)};const rollQuantity=$('#roll-quantity'),rollPrice=$('#roll-price');function updateRollPrice(){rollPrice.textContent=currency(Math.max(1,+rollQuantity.value||1)*.2)}rollQuantity.oninput=updateRollPrice;updateRollPrice();$('[data-power-roll]').onclick=()=>{const quantity=Math.max(1,Math.floor(+rollQuantity.value||1));state.cart.push({name:`${quantity} Power Rolls`,price:quantity*.2});renderCart();show(drawer)};if(window.QRCode){new QRCode($('#pix-qr'),{text:pixPayload,width:154,height:154,colorDark:'#171042',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M})}$('#confirm-payment').onclick=()=>{hideAll();show($('#receipt-modal'))};$('#receipt-form').onsubmit=e=>{e.preventDefault();const receipt=e.currentTarget.elements.receipt.files[0];const order={...state.currentOrder,receipt:receipt?.name||'Comprovante enviado',status:'PAGAMENTO EM ANÁLISE',id:Math.floor(10000+Math.random()*89999),date:new Date().toLocaleDateString('pt-BR'),messages:[{author:'Sistema',text:'Comprovante recebido. Aguarde a confirmação do pagamento para o atendimento ser liberado.'}]};localStorage.setItem('ink-pity-tickets',JSON.stringify([order,...tickets()]));state.cart=[];renderCart();hideAll();renderTickets();show($('#tickets-modal'))};
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
-renderTickets=function(){const saved=tickets();$('#tickets-list').innerHTML=saved.length?saved.map(t=>`<article class="ticket ticket-new"><div class="ticket-orb">${t.status?'⌛':'✦'}</div><div class="ticket-data"><span class="ticket-status ${t.status?'pending':''}">${t.status||'ATENDIMENTO ABERTO'}</span><h3>#${t.id} · ${t.product}</h3><p>Pedido de ${t.name} · ${t.date}</p><small>${t.status?'Comprovante aguardando confirmação':'Atendimento disponível'}</small></div><button data-ticket="${t.id}">Ver pedido →</button></article>`).join(''):'<p class="empty">Você ainda não possui pedidos. Finalize sua compra para começar.</p>';document.querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>openTicket(+b.dataset.ticket))};openTicket=function(id){const t=tickets().find(x=>x.id===id),pending=Boolean(t.status);$('.tickets-modal .modal-box').innerHTML=`<button class="close" data-close>×</button><div class="ticket-view-head"><span class="ticket-status ${pending?'pending':''}">${t.status||'ATENDIMENTO ABERTO'}</span><p>TICKET #${t.id}</p><h2>${t.product}</h2><span>Roblox: ${t.roblox}</span></div><div class="order-summary"><div><small>VALOR</small><strong>${currency(t.finalPrice??t.price)}</strong></div><div><small>COMPROVANTE</small><strong>${t.receipt||'Não enviado'}</strong></div></div>${pending?`<div class="review-card"><span>⌛</span><div><strong>Pagamento em análise</strong><p>Seu comprovante foi enviado. O chat será liberado após a confirmação manual do pagamento.</p></div></div>`:`<div class="messages">${t.messages.map(m=>`<div class="message ${m.author==='Você'?'mine':''}"><small>${m.author}</small><p>${m.text}</p></div>`).join('')}</div><form class="message-form" id="message-form"><input required placeholder="Escreva uma mensagem…" /><button class="button primary">Enviar</button></form>`}`;if(!pending){$('#message-form').onsubmit=e=>{e.preventDefault();t.messages.push({author:'Você',text:e.currentTarget.querySelector('input').value});localStorage.setItem('ink-pity-tickets',JSON.stringify(tickets().map(x=>x.id===id?t:x)));openTicket(id)}}};
+const firebaseApp = initializeApp({
+  apiKey: "AIzaSyDin9ClqtwrbiXQ0JugerTttEwa6pMh9es",
+  authDomain: "eokirastore.firebaseapp.com",
+  projectId: "eokirastore",
+  storageBucket: "eokirastore.firebasestorage.app",
+  messagingSenderId: "20118408183",
+  appId: "1:20118408183:web:7c93a13da00a3e71c63cf2",
+});
 
-// Navegação principal e avaliações de compradores.
-function savedReviews(){return JSON.parse(localStorage.getItem('eokira-reviews')||'[]')}
-function renderReviews(){const modal=$('#reviews-modal .modal-box'),eligible=Boolean(signedUser)&&tickets().length>0,reviews=savedReviews();modal.innerHTML=`<button class="close" data-close>×</button><p class="eyebrow"><i></i> AVALIAÇÕES</p><h2>Avaliações de clientes.</h2>${eligible?`<form id="review-form"><label>Sua nota<select name="rating" required><option value="5">★★★★★ — Excelente</option><option value="4">★★★★☆ — Muito bom</option><option value="3">★★★☆☆ — Bom</option><option value="2">★★☆☆☆ — Regular</option><option value="1">★☆☆☆☆ — Ruim</option></select></label><label>Conte como foi seu pedido<textarea name="text" required maxlength="400" placeholder="Escreva sua avaliação..."></textarea></label><button class="button primary" type="submit">Publicar avaliação <span>→</span></button></form>`:`<div class="empty-info"><span>★</span><strong>Exclusivo para clientes</strong><p>Somente quem possui uma compra registrada pode publicar uma avaliação.</p><button class="button primary" data-open-products>Ver produtos <span>→</span></button></div>`}${reviews.length?`<div class="mini-faq">${reviews.map(r=>`<details open><summary>${'★'.repeat(+r.rating)}${'☆'.repeat(5-(+r.rating))}</summary><p>${r.text}</p></details>`).join('')}</div>`:''}`;const form=$('#review-form');if(form)form.onsubmit=event=>{event.preventDefault();const data=Object.fromEntries(new FormData(form));localStorage.setItem('eokira-reviews',JSON.stringify([{rating:data.rating,text:data.text},...savedReviews()]));renderReviews()}}
-document.addEventListener('click',event=>{const target=event.target.closest('[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-close]');if(!target)return;event.preventDefault();event.stopPropagation();if(target.matches('[data-close]')){hideAll();return}hideAll();if(target.matches('[data-open-products]'))show($('#produtos'));else if(target.matches('[data-open-cart]'))show(drawer);else if(target.matches('[data-open-tickets]')){renderTickets();show($('#tickets-modal'))}else if(target.matches('[data-open-reviews]')){renderReviews();show($('#reviews-modal'))}else if(target.matches('[data-open-faq]'))show($('#faq-modal'))},true);
+const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
+const auth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+const $ = selector => document.querySelector(selector);
+const state = { user: null, account: null, products: new Map(), cart: [], orders: [], submitting: false };
+const overlay = $("#overlay");
+const drawer = $("#cart-drawer");
 
+function currencyFromCents(value) {
+  return (Number(value || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
+  })[character]);
+}
 
+function show(element) {
+  if (!element) return;
+  element.classList.add("is-open");
+  overlay?.classList.add("is-open");
+}
 
+function hideAll() {
+  document.querySelectorAll(".drawer.is-open, .modal.is-open, .products.is-open, .overlay.is-open")
+    .forEach(element => element.classList.remove("is-open"));
+}
 
+function notify(message, kind = "info") {
+  let toast = $("#site-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "site-toast";
+    toast.setAttribute("role", "status");
+    document.body.appendChild(toast);
+  }
+  toast.className = `site-toast ${kind}`;
+  toast.textContent = message;
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => toast.classList.remove("is-visible"), 4500);
+  requestAnimationFrame(() => toast.classList.add("is-visible"));
+}
+
+async function api(path, options = {}, authenticated = true) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (authenticated) {
+    if (!state.user) throw new Error("Faça login para continuar.");
+    headers.Authorization = `Bearer ${await state.user.getIdToken()}`;
+  }
+  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Não foi possível concluir a operação.");
+  return data;
+}
+
+async function enterWithGoogle() {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+    await signInWithPopup(auth, googleProvider);
+  } catch (error) {
+    const message = error.code === "auth/unauthorized-domain"
+      ? "O domínio do site ainda precisa ser autorizado no Firebase."
+      : "Não foi possível entrar com o Google.";
+    notify(message, "error");
+  }
+}
+
+async function requireSignedIn() {
+  if (state.user) return true;
+  await enterWithGoogle();
+  return Boolean(auth.currentUser);
+}
+
+function updateAccountButton() {
+  const button = $("[data-auth]");
+  if (!button) return;
+  if (!state.user) {
+    button.textContent = "Entrar com Google";
+    button.classList.remove("admin");
+    button.title = "";
+    return;
+  }
+  const isAdmin = state.account?.role === "admin";
+  const firstName = state.user.displayName?.split(" ")[0] || "Minha conta";
+  button.textContent = isAdmin ? "Admin · Sair" : `${firstName} · Sair`;
+  button.classList.toggle("admin", isAdmin);
+  button.title = state.user.email || "";
+}
+
+async function loadAccount() {
+  if (!state.user) return;
+  try {
+    state.account = await api("/account");
+  } catch (error) {
+    state.account = null;
+    notify(error.message, "error");
+  }
+  updateAccountButton();
+}
+
+async function loadProducts() {
+  try {
+    const data = await api("/products", {}, false);
+    state.products = new Map(data.products.map(product => [product.id, product]));
+    updateDisplayedPrices();
+  } catch (error) {
+    notify("Não foi possível carregar os preços do servidor.", "error");
+  }
+}
+
+function product(productId) {
+  return state.products.get(productId);
+}
+
+function updateDisplayedPrices() {
+  const improvement = product("farm_melhorias");
+  const wons = product("farm_wons_1b");
+  const roll = product("power_roll");
+  if (improvement) $("[data-product='farm_melhorias']")?.closest(".card-bottom")?.querySelector("strong")?.replaceChildren(currencyFromCents(improvement.priceCents));
+  if (wons) {
+    const price = $("[data-wons]")?.closest(".card-bottom")?.querySelector("strong");
+    if (price) price.textContent = `${currencyFromCents(wons.priceCents)} por 1B`;
+  }
+  if (roll) {
+    const price = $("[data-power-roll]")?.closest(".card-bottom")?.querySelector("strong");
+    if (price) price.textContent = `${currencyFromCents(roll.priceCents)} cada`;
+  }
+  updateWonsPrice();
+  updateRollPrice();
+}
+
+function addItem(productId, quantity) {
+  const itemProduct = product(productId);
+  if (!itemProduct) {
+    notify("Aguarde os produtos terminarem de carregar.", "error");
+    return;
+  }
+  const safeQuantity = Math.max(1, Math.min(100000, Math.floor(Number(quantity) || 1)));
+  const existing = state.cart.find(item => item.productId === productId);
+  if (existing) existing.quantity = Math.min(100000, existing.quantity + safeQuantity);
+  else state.cart.push({ productId, name: itemProduct.name, quantity: safeQuantity, unitPriceCents: itemProduct.priceCents });
+  renderCart();
+  hideAll();
+  show(drawer);
+}
+
+function renderCart() {
+  const totalCents = state.cart.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+  const count = state.cart.length;
+  $("#cart-count").textContent = count;
+  $("#side-cart-count").textContent = count;
+  $("#cart-total").textContent = currencyFromCents(totalCents);
+  $("#checkout-button").disabled = count === 0 || state.submitting;
+  $("#cart-items").innerHTML = count
+    ? state.cart.map((item, index) => `
+      <div class="cart-item">
+        <div>
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>${item.quantity} × ${currencyFromCents(item.unitPriceCents)}</small>
+        </div>
+        <button data-remove="${index}" aria-label="Remover ${escapeHtml(item.name)}">×</button>
+      </div>`).join("")
+    : '<p class="empty">Seu carrinho está vazio.</p>';
+  document.querySelectorAll("[data-remove]").forEach(button => {
+    button.onclick = () => {
+      state.cart.splice(Number(button.dataset.remove), 1);
+      renderCart();
+    };
+  });
+}
+
+function renderCheckoutSummary() {
+  const summary = $("#checkout-summary");
+  if (!summary) return;
+  const total = state.cart.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
+  summary.innerHTML = `${state.cart.map(item => `<p><span>${item.quantity} × ${escapeHtml(item.name)}</span><strong>${currencyFromCents(item.unitPriceCents * item.quantity)}</strong></p>`).join("")}<p class="checkout-total"><span>Total</span><strong>${currencyFromCents(total)}</strong></p>`;
+}
+
+async function submitOrders(event) {
+  event.preventDefault();
+  if (state.submitting || !state.cart.length) return;
+  if (!(await requireSignedIn())) return;
+  state.submitting = true;
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Criando pedido seguro...";
+  const pendingItems = [...state.cart];
+  const results = await Promise.allSettled(pendingItems.map(item => api("/createOrder", {
+    method: "POST",
+    body: JSON.stringify({ productId: item.productId, quantity: item.quantity }),
+  })));
+  const failures = [];
+  const created = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") created.push(result.value);
+    else failures.push(pendingItems[index]);
+  });
+  state.cart = failures;
+  state.submitting = false;
+  button.disabled = false;
+  button.textContent = original;
+  renderCart();
+  if (created.length) {
+    hideAll();
+    notify(`${created.length} pedido(s) criado(s). Aguardando pagamento.`, "success");
+    await openOrders();
+  } else {
+    notify(results[0]?.reason?.message || "Não foi possível criar o pedido.", "error");
+  }
+}
+
+function statusLabel(status) {
+  return ({ AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", COMPLETED: "CONCLUÍDO" })[status] || status || "EM ANÁLISE";
+}
+
+function orderProduct(order) {
+  const first = order.items?.[0];
+  return first ? `${first.quantity} × ${first.name}` : "Pedido";
+}
+
+function renderOrders() {
+  const list = $("#tickets-list");
+  if (!state.user) {
+    list.innerHTML = '<div class="empty-info"><span>◌</span><strong>Entre para ver seus pedidos</strong><p>Seus pedidos ficam ligados à sua conta Google.</p><button class="button primary" data-login-orders>Entrar com Google <span>→</span></button></div>';
+    $("[data-login-orders]")?.addEventListener("click", async () => {
+      if (await requireSignedIn()) await openOrders();
+    });
+    return;
+  }
+  list.innerHTML = state.orders.length ? state.orders.map(order => `
+    <article class="ticket ticket-new">
+      <div class="ticket-orb">⌛</div>
+      <div class="ticket-data">
+        <span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span>
+        <h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
+        <p>Total confirmado pelo servidor: ${currencyFromCents(order.totalCents)}</p>
+        <small>Pedido salvo com segurança no banco de dados</small>
+      </div>
+      <button data-order="${escapeHtml(order.id)}">Ver pedido →</button>
+    </article>`).join("") : '<p class="empty">Você ainda não possui pedidos. Finalize sua compra para começar.</p>';
+  document.querySelectorAll("[data-order]").forEach(button => button.onclick = () => openOrder(button.dataset.order));
+}
+
+async function openOrders() {
+  hideAll();
+  show($("#tickets-modal"));
+  const list = $("#tickets-list");
+  if (!state.user) {
+    renderOrders();
+    return;
+  }
+  list.innerHTML = '<p class="empty">Carregando seus pedidos...</p>';
+  try {
+    state.orders = (await api("/orders")).orders;
+    renderOrders();
+  } catch (error) {
+    list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function openOrder(orderId) {
+  const order = state.orders.find(item => item.id === orderId);
+  if (!order) return;
+  const modal = $("#tickets-modal .modal-box");
+  modal.innerHTML = `
+    <button class="close" data-close aria-label="Fechar">×</button>
+    <div class="ticket-view-head">
+      <span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span>
+      <p>PEDIDO #${escapeHtml(order.id.slice(0, 10).toUpperCase())}</p>
+      <h2>${escapeHtml(orderProduct(order))}</h2>
+      <span>Conta: ${escapeHtml(state.user?.email || "")}</span>
+    </div>
+    <div class="order-summary">
+      <div><small>VALOR</small><strong>${currencyFromCents(order.totalCents)}</strong></div>
+      <div><small>STATUS</small><strong>${escapeHtml(statusLabel(order.status))}</strong></div>
+    </div>
+    <div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O PIX automático será conectado na próxima etapa.</p></div></div>
+    <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
+  $("[data-back-orders]")?.addEventListener("click", openOrders);
+}
+
+function renderReviews() {
+  const modal = $("#reviews-modal .modal-box");
+  modal.innerHTML = `
+    <button class="close" data-close aria-label="Fechar">×</button>
+    <p class="eyebrow"><i></i> AVALIAÇÕES</p>
+    <h2>Avaliações de clientes.</h2>
+    <div class="empty-info"><span>★</span><strong>Somente compradores confirmados</strong><p>A avaliação será liberada pelo servidor apenas após o pedido ficar concluído.</p><button class="button primary" data-open-products>Ver produtos <span>→</span></button></div>`;
+}
+
+const wonsQuantity = $("#wons-quantity");
+const wonsPrice = $("#wons-price");
+const rollQuantity = $("#roll-quantity");
+const rollPrice = $("#roll-price");
+
+function updateWonsPrice() {
+  const item = product("farm_wons_1b");
+  const quantity = Math.max(1, Math.floor(Number(wonsQuantity?.value) || 1));
+  if (wonsPrice && item) wonsPrice.textContent = currencyFromCents(item.priceCents * quantity);
+}
+
+function updateRollPrice() {
+  const item = product("power_roll");
+  const quantity = Math.max(1, Math.floor(Number(rollQuantity?.value) || 1));
+  if (rollPrice && item) rollPrice.textContent = currencyFromCents(item.priceCents * quantity);
+}
+
+wonsQuantity?.addEventListener("input", updateWonsPrice);
+rollQuantity?.addEventListener("input", updateRollPrice);
+
+$("[data-product='farm_melhorias']")?.addEventListener("click", async () => {
+  if (await requireSignedIn()) addItem("farm_melhorias", 1);
+});
+$("[data-wons]")?.addEventListener("click", async () => {
+  if (await requireSignedIn()) addItem("farm_wons_1b", wonsQuantity.value);
+});
+$("[data-power-roll]")?.addEventListener("click", async () => {
+  if (await requireSignedIn()) addItem("power_roll", rollQuantity.value);
+});
+
+$("#checkout-button")?.addEventListener("click", async () => {
+  if (!(await requireSignedIn())) return;
+  hideAll();
+  renderCheckoutSummary();
+  show($("#checkout-modal"));
+});
+$("#checkout-form")?.addEventListener("submit", submitOrders);
+overlay?.addEventListener("click", hideAll);
+
+document.addEventListener("click", async event => {
+  const authButton = event.target.closest("[data-auth]");
+  if (authButton) {
+    event.preventDefault();
+    state.user ? await signOut(auth) : await enterWithGoogle();
+    return;
+  }
+  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-close]");
+  if (!target) return;
+  event.preventDefault();
+  if (target.matches("[data-close]")) {
+    hideAll();
+    return;
+  }
+  hideAll();
+  if (target.matches("[data-open-products]")) show($("#produtos"));
+  else if (target.matches("[data-open-cart]")) show(drawer);
+  else if (target.matches("[data-open-tickets]")) await openOrders();
+  else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
+  else if (target.matches("[data-open-faq]")) show($("#faq-modal"));
+});
+
+onAuthStateChanged(auth, async user => {
+  state.user = user;
+  state.account = null;
+  updateAccountButton();
+  if (user) await loadAccount();
+  else {
+    state.orders = [];
+    state.cart = [];
+    renderCart();
+  }
+});
+
+renderCart();
+renderReviews();
+loadProducts();
