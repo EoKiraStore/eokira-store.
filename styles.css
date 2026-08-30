@@ -86,3 +86,5 @@ body { background-image: linear-gradient(115deg,rgba(9,3,31,.36),rgba(13,24,72,.
 .admin-order .button { width: auto; }
 .admin-locked { max-width: 220px; color: #ffca80; font: 500 11px/1.45 "DM Mono", monospace; text-transform: uppercase; }
 @media (max-width: 700px) { .admin-order { grid-template-columns: 1fr; } .admin-locked { max-width: none; } }
+
+.cancel-order { margin-top: 16px; border: 1px solid #c65b72; color: #8f243d; } .cancel-order:hover { background: #ffe3e9; }

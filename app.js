@@ -263,7 +263,7 @@ async function submitOrders(event) {
 }
 
 function statusLabel(status) {
-  return ({ AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", TICKET_OPEN: "TICKET ABERTO", IN_PROGRESS: "EM ANDAMENTO", COMPLETED: "CONCLUÍDO" })[status] || status || "EM ANÁLISE";
+  return ({ CREATED: "CRIADO", AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_FOUND: "PAGAMENTO LOCALIZADO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", TICKET_OPEN: "TICKET ABERTO", IN_PROGRESS: "EM ANDAMENTO", COMPLETED: "CONCLUÍDO", PAYMENT_EXPIRED: "PAGAMENTO EXPIRADO", CANCELLED: "CANCELADO", REFUNDED: "REEMBOLSADO" })[status] || status || "EM ANÁLISE";
 }
 
 function orderProduct(order) {
@@ -331,8 +331,10 @@ function openOrder(orderId) {
       <div><small>PAGAMENTO</small><strong>${escapeHtml(order.paymentStatus || "UNPAID")}</strong></div>
     </div>
     <div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O PIX automático será conectado na próxima etapa.</p></div></div>
+    ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? `<button class="button cancel-order" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>` : ""}
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
   $("[data-back-orders]")?.addEventListener("click", openOrders);
+  $("[data-cancel-order]")?.addEventListener("click", () => cancelOrder(order.id));
 }
 
 function renderReviews() {
@@ -344,13 +346,13 @@ function renderReviews() {
     <div class="empty-info"><span>★</span><strong>Somente compradores confirmados</strong><p>A avaliação será liberada pelo servidor apenas após o pedido ficar concluído.</p><button class="button primary" data-open-products>Ver produtos <span>→</span></button></div>`;
 }
 
-function nextAdminStatus(order) {
+function nextAdminAction(order) {
   if (order.paymentStatus !== "PAID") return null;
-  return ({ PAYMENT_CONFIRMED: "TICKET_OPEN", TICKET_OPEN: "IN_PROGRESS", IN_PROGRESS: "COMPLETED" })[order.status] || null;
-}
-
-function adminStatusAction(status) {
-  return ({ TICKET_OPEN: "Abrir ticket", IN_PROGRESS: "Iniciar serviço", COMPLETED: "Concluir serviço" })[status] || status;
+  return ({
+    PAYMENT_CONFIRMED: { route: "/admin/openTicket", label: "Abrir ticket" },
+    TICKET_OPEN: { route: "/admin/startService", label: "Iniciar serviço" },
+    IN_PROGRESS: { route: "/admin/completeService", label: "Concluir serviço" },
+  })[order.status] || null;
 }
 
 function renderAdminOrders() {
@@ -362,15 +364,15 @@ function renderAdminOrders() {
   }
   list.innerHTML = state.adminOrders.map(order => {
     const customer = state.adminCustomers[order.userId] || {};
-    const next = nextAdminStatus(order);
+    const action = nextAdminAction(order);
     return `<article class="admin-order">
       <div><span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span><h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
       <p>${escapeHtml(customer.displayName || "Cliente")} · ${escapeHtml(customer.email || order.userId)}</p>
       <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")}</small></div>
-      ${next ? `<button class="button primary" data-admin-status="${escapeHtml(next)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(adminStatusAction(next))}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}
+      ${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}
     </article>`;
   }).join("");
-  document.querySelectorAll("[data-admin-status]").forEach(button => button.addEventListener("click", () => updateAdminOrderStatus(button.dataset.adminOrder, button.dataset.adminStatus)));
+  document.querySelectorAll("[data-admin-action]").forEach(button => button.addEventListener("click", () => runAdminAction(button.dataset.adminOrder, button.dataset.adminAction)));
 }
 
 async function openAdmin() {
@@ -392,16 +394,29 @@ async function openAdmin() {
   }
 }
 
-async function updateAdminOrderStatus(orderId, toStatus) {
+async function runAdminAction(orderId, route) {
+  const allowedRoutes = new Set(["/admin/openTicket", "/admin/startService", "/admin/completeService"]);
+  if (!allowedRoutes.has(route)) return;
   try {
-    await api("/admin/updateOrderStatus", { method: "POST", body: JSON.stringify({ orderId, toStatus }) });
-    notify("Status atualizado e registrado na auditoria.", "success");
+    const result = await api(route, { method: "POST", body: JSON.stringify({ orderId }) });
+    notify(result.alreadyApplied ? "A ação já havia sido aplicada." : "Ação concluída e registrada na auditoria.", "success");
     await openAdmin();
   } catch (error) {
     notify(error.message, "error");
   }
 }
 
+async function cancelOrder(orderId) {
+  if (!window.confirm("Cancelar este pedido? Se houver desconto reservado, ele será liberado.")) return;
+  try {
+    const result = await api("/cancelOrder", { method: "POST", body: JSON.stringify({ orderId }) });
+    notify(result.alreadyApplied ? "O pedido já estava cancelado." : "Pedido cancelado com segurança.", "success");
+    await loadAccount();
+    await openOrders();
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
 const wonsQuantity = $("#wons-quantity");
 const wonsPrice = $("#wons-price");
 const rollQuantity = $("#roll-quantity");
