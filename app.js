@@ -22,7 +22,7 @@ const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -280,16 +280,32 @@ function orderProduct(order) {
     : "Pedido";
 }
 
+function ticketStatusLabel(status) {
+  return ({ OPEN: "ABERTO", IN_PROGRESS: "EM ATENDIMENTO", CLOSED: "FECHADO", ARCHIVED: "ARQUIVADO" })[status] || "ABERTO";
+}
+
+function customerTabs() {
+  return `<div class="customer-tabs"><button type="button" class="customer-tab ${state.customerView === "tickets" ? "is-active" : ""}" data-customer-view="tickets">Meus tickets</button><button type="button" class="customer-tab ${state.customerView === "orders" ? "is-active" : ""}" data-customer-view="orders">Meus pedidos</button></div>`;
+}
+
 function renderOrders() {
   const list = $("#tickets-list");
   if (!state.user) {
-    list.innerHTML = '<div class="empty-info"><span>◌</span><strong>Entre para ver seus pedidos</strong><p>Seus pedidos ficam ligados à sua conta Google.</p><button class="button primary" data-login-orders>Entrar com Google <span>→</span></button></div>';
+    list.innerHTML = '<div class="empty-info"><span>◌</span><strong>Entre para ver seus tickets</strong><p>Seus tickets ficam ligados à sua conta Google.</p><button class="button primary" data-login-orders>Entrar com Google <span>→</span></button></div>';
     $("[data-login-orders]")?.addEventListener("click", async () => {
       if (await requireSignedIn()) await openOrders();
     });
     return;
   }
-  list.innerHTML = state.orders.length ? state.orders.map(order => `
+  if (state.customerView === "tickets") {
+    list.innerHTML = `${customerTabs()}${state.tickets.length ? state.tickets.map(ticket => `
+      <article class="ticket ticket-new">
+        <div class="ticket-orb">◌</div>
+        <div class="ticket-data"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}</h3><p>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())}</p><small>Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}</small></div>
+        <button data-ticket="${escapeHtml(ticket.id)}">Ver ticket →</button>
+      </article>`).join("") : '<div class="empty-info"><span>◌</span><strong>Nenhum ticket aberto</strong><p>Quando o atendimento do seu pedido for liberado, ele aparecerá aqui.</p></div>'}`;
+    document.querySelectorAll("[data-ticket]").forEach(button => button.onclick = () => openTicket(button.dataset.ticket));
+  } else list.innerHTML = `${customerTabs()}${state.orders.length ? state.orders.map(order => `
     <article class="ticket ticket-new">
       <div class="ticket-orb">⌛</div>
       <div class="ticket-data">
@@ -299,7 +315,8 @@ function renderOrders() {
         <small>${escapeHtml(order.paymentStatus || "UNPAID")} · valores congelados no pedido</small>
       </div>
       <button data-order="${escapeHtml(order.id)}">Ver pedido →</button>
-    </article>`).join("") : '<p class="empty">Você ainda não possui pedidos. Finalize sua compra para começar.</p>';
+    </article>`).join("") : '<p class="empty">Você ainda não possui pedidos. Finalize sua compra para começar.</p>'}`;
+  document.querySelectorAll("[data-customer-view]").forEach(button => button.onclick = () => { state.customerView = button.dataset.customerView; renderOrders(); });
   document.querySelectorAll("[data-order]").forEach(button => button.onclick = () => openOrder(button.dataset.order));
 }
 
@@ -311,12 +328,36 @@ async function openOrders() {
     renderOrders();
     return;
   }
-  list.innerHTML = '<p class="empty">Carregando seus pedidos...</p>';
+  list.innerHTML = '<p class="empty">Carregando seus tickets...</p>';
   try {
-    state.orders = (await api("/orders")).orders;
+    const [orders, tickets] = await Promise.all([api("/orders"), api("/tickets")]);
+    state.orders = orders.orders || [];
+    state.tickets = tickets.tickets || [];
     renderOrders();
   } catch (error) {
     list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function openTicket(ticketId) {
+  const modal = $("#tickets-modal .modal-box");
+  modal.innerHTML = '<button class="close" data-close aria-label="Fechar">×</button><p class="empty">Carregando ticket...</p>';
+  try {
+    const result = await api(`/tickets/${encodeURIComponent(ticketId)}`);
+    const ticket = result.ticket;
+    const relatedOrder = state.orders.find(order => order.id === ticket.orderId);
+    modal.innerHTML = `
+      <button class="close" data-close aria-label="Fechar">×</button>
+      <div class="ticket-view-head"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><p>TICKET #${escapeHtml(ticket.id.slice(-10).toUpperCase())}</p><h2>${escapeHtml(ticket.subject || "Atendimento")}</h2><span>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())}</span></div>
+      <div class="order-summary"><div><small>STATUS DO TICKET</small><strong>${escapeHtml(ticketStatusLabel(ticket.status))}</strong></div><div><small>STATUS DO PEDIDO</small><strong>${escapeHtml(statusLabel(relatedOrder?.status))}</strong></div><div><small>CRIADO EM</small><strong>${escapeHtml(formatDateTime(ticket.createdAt))}</strong></div><div><small>ÚLTIMA ATUALIZAÇÃO</small><strong>${escapeHtml(formatDateTime(ticket.updatedAt))}</strong></div></div>
+      <div class="ticket-empty-chat"><strong>Conversa do atendimento</strong><p>O chat será conectado em uma próxima etapa. Nenhuma mensagem foi criada nesta tela.</p></div>
+      <div class="ticket-history"><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : '<p>Histórico anterior indisponível.</p>'}</div>
+      ${relatedOrder ? `<button class="button admin-secondary" data-ticket-order="${escapeHtml(relatedOrder.id)}">Ver pedido</button>` : ""}<button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
+    $("[data-back-tickets]")?.addEventListener("click", openOrders);
+    $("[data-ticket-order]")?.addEventListener("click", () => openOrder(ticket.orderId));
+  } catch (error) {
+    modal.innerHTML = `<button class="close" data-close aria-label="Fechar">×</button><p class="empty">${escapeHtml(error.message || "Não foi possível carregar o ticket.")}</p><button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
+    $("[data-back-tickets]")?.addEventListener("click", openOrders);
   }
 }
 
@@ -363,21 +404,30 @@ function nextAdminAction(order) {
   })[order.status] || null;
 }
 
+function adminTicketForOrder(orderId) {
+  return state.adminTickets.find(ticket => ticket.orderId === orderId) || null;
+}
+
 function ensureAdminPanelUi() {
   const list = $("#admin-orders-list");
   if (!list || $("#admin-summary")) return;
   list.insertAdjacentHTML("beforebegin", `
     <p class="admin-payment-note">Pagamentos só serão confirmados automaticamente quando a integração PIX for ativada.</p>
-    <div class="admin-tabs" role="tablist"><button class="admin-tab is-active" type="button" data-admin-view="orders">Pedidos</button><button class="admin-tab" type="button" data-admin-view="audit">Auditoria</button></div>
+    <div class="admin-tabs" role="tablist"><button class="admin-tab is-active" type="button" data-admin-view="orders">Pedidos</button><button class="admin-tab" type="button" data-admin-view="tickets">Tickets</button><button class="admin-tab" type="button" data-admin-view="audit">Auditoria</button></div>
     <div class="admin-summary" id="admin-summary" aria-live="polite"></div>
     <div class="admin-toolbar">
       <label><span>Buscar</span><input id="admin-order-search" type="search" placeholder="ID, nome, e-mail ou produto" autocomplete="off" /></label>
       <label><span>Status</span><select id="admin-status-filter"><option value="ALL">Todos os status</option></select></label>
     </div>
     <section id="admin-audit-panel" class="admin-audit-panel" hidden>
-      <div class="admin-toolbar"><label><span>Buscar logs</span><input id="admin-audit-search" type="search" placeholder="Pedido, administrador ou ação" autocomplete="off" /></label><label><span>Categoria</span><select id="admin-audit-category"><option value="ALL">Todas</option><option value="ORDERS">Pedidos</option><option value="STATUS">Status</option><option value="PAYMENTS">Pagamentos</option><option value="SECURITY">Segurança</option></select></label><label><span>Período</span><select id="admin-audit-period"><option value="ALL">Todos</option><option value="TODAY">Hoje</option><option value="7D">Últimos 7 dias</option><option value="30D">Últimos 30 dias</option></select></label></div>
+      <div class="admin-toolbar"><label><span>Buscar logs</span><input id="admin-audit-search" type="search" placeholder="Pedido, administrador ou ação" autocomplete="off" /></label><label><span>Categoria</span><select id="admin-audit-category"><option value="ALL">Todas</option><option value="ORDERS">Pedidos</option><option value="TICKETS">Tickets</option><option value="STATUS">Status</option><option value="PAYMENTS">Pagamentos</option><option value="SECURITY">Segurança</option></select></label><label><span>Período</span><select id="admin-audit-period"><option value="ALL">Todos</option><option value="TODAY">Hoje</option><option value="7D">Últimos 7 dias</option><option value="30D">Últimos 30 dias</option></select></label></div>
       <div id="admin-audit-list"><p class="empty">A auditoria será carregada ao abrir esta aba.</p></div>
       <button class="button admin-secondary" id="admin-audit-more" type="button" hidden>Carregar mais</button>
+    </section>
+    <section id="admin-ticket-panel" class="admin-ticket-panel" hidden>
+      <div class="admin-toolbar"><label><span>Buscar tickets</span><input id="admin-ticket-search" type="search" placeholder="Ticket, pedido, cliente ou produto" autocomplete="off" /></label><label><span>Status</span><select id="admin-ticket-status"><option value="ALL">Todos os status</option><option value="OPEN">Abertos</option><option value="IN_PROGRESS">Em atendimento</option><option value="CLOSED">Fechados</option><option value="ARCHIVED">Arquivados</option></select></label></div>
+      <div id="admin-ticket-list"><p class="empty">Os tickets serão carregados ao abrir esta aba.</p></div>
+      <button class="button admin-secondary" id="admin-ticket-more" type="button" hidden>Carregar mais</button>
     </section>`);
 }
 
@@ -398,6 +448,8 @@ function renderAdminOrders() {
   list.innerHTML = orders.map(order => {
     const customer = state.adminCustomers[order.userId] || {};
     const action = nextAdminAction(order);
+    const ticket = adminTicketForOrder(order.id);
+    const ticketAllowed = !["CANCELLED", "PAYMENT_EXPIRED", "REFUNDED"].includes(order.status);
     const events = state.adminEvents[order.id];
     const isSelected = state.adminSelectedOrderId === order.id;
     return `<article class="admin-order">
@@ -405,12 +457,14 @@ function renderAdminOrders() {
       <p>${escapeHtml(customer.displayName || "Cliente")} · ${escapeHtml(customer.email || order.userId)}</p>
       <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")} · Criado em ${escapeHtml(formatDateTime(order.createdAt))}</small>
       ${isSelected ? `<div class="admin-detail"><strong>Histórico do pedido</strong>${events === undefined ? '<p>Carregando histórico...</p>' : events.length ? `<ol class="admin-timeline">${events.map(event => { const actor = state.adminEventActors[event.actorUid] || {}; return `<li><strong>${escapeHtml(statusLabel(event.to))}</strong><span>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")} · ${escapeHtml(actor.displayName || "Sistema/usuário")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : '<p>Histórico anterior indisponível.</p>'}</div>` : ""}</div>
-      <div class="admin-actions"><button class="button admin-secondary" data-admin-detail="${escapeHtml(order.id)}">${isSelected ? "Ocultar detalhes" : "Ver detalhes"}</button><button class="button admin-secondary" data-copy-order="${escapeHtml(order.id)}">Copiar ID</button>${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}</div>
+      <div class="admin-actions"><button class="button admin-secondary" data-admin-detail="${escapeHtml(order.id)}">${isSelected ? "Ocultar detalhes" : "Ver detalhes"}</button><button class="button admin-secondary" data-copy-order="${escapeHtml(order.id)}">Copiar ID</button>${ticket ? `<button class="button admin-secondary" data-admin-ticket="${escapeHtml(ticket.id)}">Ver ticket</button>` : ticketAllowed ? `<button class="button admin-secondary" data-create-ticket="${escapeHtml(order.id)}">Abrir ticket</button>` : ""}${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}</div>
     </article>`;
   }).join("");
   document.querySelectorAll("[data-admin-action]").forEach(button => button.addEventListener("click", () => runAdminAction(button.dataset.adminOrder, button.dataset.adminAction, button)));
   document.querySelectorAll("[data-admin-detail]").forEach(button => button.addEventListener("click", () => toggleAdminDetail(button.dataset.adminDetail)));
   document.querySelectorAll("[data-copy-order]").forEach(button => button.addEventListener("click", () => copyOrderId(button.dataset.copyOrder)));
+  document.querySelectorAll("[data-create-ticket]").forEach(button => button.addEventListener("click", () => createAdminTicket(button.dataset.createTicket, button)));
+  document.querySelectorAll("[data-admin-ticket]").forEach(button => button.addEventListener("click", () => openAdminTicketDetail(button.dataset.adminTicket)));
 }
 
 function renderAdminSummary(orders) {
@@ -420,6 +474,56 @@ function renderAdminSummary(orders) {
   const awaiting = orders.filter(order => order.status === "AWAITING_PAYMENT").length;
   const progressing = orders.filter(order => order.status === "IN_PROGRESS").length;
   summary.innerHTML = `<div><small>EXIBINDO</small><strong>${orders.length}</strong></div><div><small>EM ABERTO</small><strong>${active}</strong></div><div><small>AGUARDANDO PAGAMENTO</small><strong>${awaiting}</strong></div><div><small>EM ANDAMENTO</small><strong>${progressing}</strong></div>`;
+}
+
+function ticketAction(ticket) {
+  return ({
+    OPEN: { route: "/admin/ticket/start", label: "Iniciar atendimento" },
+    IN_PROGRESS: { route: "/admin/ticket/close", label: "Fechar ticket" },
+    CLOSED: { route: "/admin/ticket/reopen", label: "Reabrir ticket" },
+  })[ticket.status] || null;
+}
+
+function renderAdminTickets() {
+  const list = $("#admin-ticket-list");
+  const more = $("#admin-ticket-more");
+  if (!list) return;
+  const query = state.adminTicketSearch.trim().toLocaleLowerCase("pt-BR");
+  const tickets = state.adminTickets.filter(ticket => {
+    const owner = state.adminTicketActors[ticket.ownerId] || {};
+    const admin = state.adminTicketActors[ticket.assignedAdminUid] || {};
+    const searchable = [ticket.id, ticket.orderId, ticket.productSummary, owner.displayName, owner.email, admin.displayName].join(" ").toLocaleLowerCase("pt-BR");
+    return (state.adminTicketStatus === "ALL" || ticket.status === state.adminTicketStatus) && (!query || searchable.includes(query));
+  });
+  if (!tickets.length) list.innerHTML = '<p class="empty">Nenhum ticket encontrado.</p>';
+  else list.innerHTML = tickets.map(ticket => {
+    const owner = state.adminTicketActors[ticket.ownerId] || {};
+    const admin = state.adminTicketActors[ticket.assignedAdminUid] || {};
+    const action = ticketAction(ticket);
+    const selected = state.adminSelectedTicketId === ticket.id;
+    return `<article class="admin-order admin-ticket"><div><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}</h3><p>${escapeHtml(owner.displayName || "Cliente")} · ${escapeHtml(owner.email || ticket.ownerId)}</p><small>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}${admin.displayName ? ` · Responsável: ${escapeHtml(admin.displayName)}` : " · Sem responsável"}</small>${selected ? `<div class="admin-detail" id="admin-ticket-detail-${escapeHtml(ticket.id)}"><p>Carregando detalhes...</p></div>` : ""}</div><div class="admin-actions"><button class="button admin-secondary" data-ticket-detail="${escapeHtml(ticket.id)}">${selected ? "Ocultar detalhes" : "Ver ticket"}</button>${!ticket.assignedAdminUid && ticket.status !== "ARCHIVED" ? `<button class="button admin-secondary" data-ticket-assign="${escapeHtml(ticket.id)}">Assumir</button>` : ""}${action ? `<button class="button primary" data-ticket-action="${escapeHtml(action.route)}" data-ticket-id="${escapeHtml(ticket.id)}">${escapeHtml(action.label)}</button>` : ""}${ticket.status === "CLOSED" ? `<button class="button admin-secondary" data-ticket-action="/admin/ticket/archive" data-ticket-id="${escapeHtml(ticket.id)}">Arquivar</button>` : ""}</div></article>`;
+  }).join("");
+  document.querySelectorAll("[data-ticket-detail]").forEach(button => button.addEventListener("click", () => openAdminTicketDetail(button.dataset.ticketDetail)));
+  document.querySelectorAll("[data-ticket-assign]").forEach(button => button.addEventListener("click", () => runTicketAction(button.dataset.ticketAssign, "/admin/ticket/assignSelf", button)));
+  document.querySelectorAll("[data-ticket-action]").forEach(button => button.addEventListener("click", () => runTicketAction(button.dataset.ticketId, button.dataset.ticketAction, button)));
+  if (more) more.hidden = !state.adminTicketNextPageToken;
+}
+
+async function loadAdminTickets(reset = true) {
+  if (!state.isAdmin || (!reset && !state.adminTicketNextPageToken)) return;
+  const list = $("#admin-ticket-list");
+  if (reset && list) list.innerHTML = '<p class="empty">Carregando tickets...</p>';
+  try {
+    const params = new URLSearchParams({ pageSize: "25" });
+    if (!reset && state.adminTicketNextPageToken) params.set("pageToken", state.adminTicketNextPageToken);
+    const result = await api(`/admin/tickets?${params.toString()}`);
+    state.adminTickets = reset ? (result.tickets || []) : [...state.adminTickets, ...(result.tickets || [])];
+    state.adminTicketActors = { ...state.adminTicketActors, ...(result.actors || {}) };
+    state.adminTicketNextPageToken = result.nextPageToken || null;
+  } catch (error) {
+    if (list) list.innerHTML = `<p class="empty">${escapeHtml(error.message || "Não foi possível carregar os tickets.")}</p>`;
+  }
+  renderAdminTickets();
 }
 
 function bindAdminControls() {
@@ -459,6 +563,19 @@ function bindAdminControls() {
   if (auditCategory) auditCategory.value = state.auditCategory;
   if (auditPeriod) auditPeriod.value = state.auditPeriod;
   $("#admin-audit-more")?.addEventListener("click", () => loadAuditLogs(false));
+  const ticketSearch = $("#admin-ticket-search");
+  const ticketStatus = $("#admin-ticket-status");
+  if (ticketSearch && !ticketSearch.dataset.bound) {
+    ticketSearch.dataset.bound = "true";
+    ticketSearch.addEventListener("input", () => { state.adminTicketSearch = ticketSearch.value; renderAdminTickets(); });
+  }
+  if (ticketStatus && !ticketStatus.dataset.bound) {
+    ticketStatus.dataset.bound = "true";
+    ticketStatus.addEventListener("change", () => { state.adminTicketStatus = ticketStatus.value; renderAdminTickets(); });
+  }
+  if (ticketSearch) ticketSearch.value = state.adminTicketSearch;
+  if (ticketStatus) ticketStatus.value = state.adminTicketStatus;
+  $("#admin-ticket-more")?.addEventListener("click", () => loadAdminTickets(false));
 }
 
 function auditLabel(log) {
@@ -513,16 +630,19 @@ async function loadAuditLogs(reset = true) {
 }
 
 async function switchAdminView(view) {
-  if (!state.isAdmin || !["orders", "audit"].includes(view)) return;
+  if (!state.isAdmin || !["orders", "tickets", "audit"].includes(view)) return;
   state.adminView = view;
   const auditPanel = $("#admin-audit-panel");
+  const ticketPanel = $("#admin-ticket-panel");
   const list = $("#admin-orders-list");
   document.querySelectorAll("[data-admin-view]").forEach(button => button.classList.toggle("is-active", button.dataset.adminView === view));
   if (list) list.hidden = view !== "orders";
   $("#admin-summary")?.toggleAttribute("hidden", view !== "orders");
   $("#admin-order-search")?.closest(".admin-toolbar")?.toggleAttribute("hidden", view !== "orders");
   if (auditPanel) auditPanel.hidden = view !== "audit";
+  if (ticketPanel) ticketPanel.hidden = view !== "tickets";
   if (view === "audit" && !state.auditLogs.length) await loadAuditLogs(true);
+  if (view === "tickets" && !state.adminTickets.length) await loadAdminTickets(true);
 }
 
 async function toggleAdminDetail(orderId) {
@@ -554,6 +674,64 @@ async function copyOrderId(orderId) {
   }
 }
 
+async function createAdminTicket(orderId, button) {
+  if (state.adminActionInFlight) return;
+  if (!window.confirm("Abrir um ticket de atendimento para este pedido? A ação ficará registrada.")) return;
+  state.adminActionInFlight = true;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Criando ticket..."; }
+  try {
+    const result = await api("/admin/createTicket", { method: "POST", body: JSON.stringify({ orderId }) });
+    notify(result.alreadyApplied ? "Este pedido já possuía um ticket." : "Ticket criado e registrado na auditoria.", "success");
+    await loadAdminTickets(true);
+    renderAdminOrders();
+    await switchAdminView("tickets");
+  } catch (error) {
+    notify(error.message || "Não foi possível criar o ticket.", "error");
+  } finally {
+    state.adminActionInFlight = false;
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
+async function openAdminTicketDetail(ticketId) {
+  if (state.adminSelectedTicketId === ticketId) {
+    state.adminSelectedTicketId = null;
+    renderAdminTickets();
+    return;
+  }
+  state.adminSelectedTicketId = ticketId;
+  renderAdminTickets();
+  const detail = $(`#admin-ticket-detail-${ticketId}`);
+  try {
+    const result = await api(`/tickets/${encodeURIComponent(ticketId)}`);
+    const ticket = result.ticket;
+    const assigned = result.actors?.[ticket.assignedAdminUid] || {};
+    if (detail) detail.innerHTML = `<strong>Detalhes do ticket</strong><p>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · ${escapeHtml(ticket.subject || "Atendimento")}</p><p>Responsável: ${escapeHtml(assigned.displayName || "Sem responsável")}</p><p>Chat ainda não foi ativado; não há mensagens nesta etapa.</p><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type)}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : "<p>Histórico anterior indisponível.</p>"}`;
+  } catch (error) {
+    if (detail) detail.innerHTML = `<p>${escapeHtml(error.message || "Não foi possível carregar os detalhes.")}</p>`;
+  }
+}
+
+async function runTicketAction(ticketId, route, button) {
+  const labels = { "/admin/ticket/assignSelf": "assumir este ticket", "/admin/ticket/start": "iniciar o atendimento", "/admin/ticket/close": "fechar este ticket", "/admin/ticket/reopen": "reabrir este ticket", "/admin/ticket/archive": "arquivar este ticket" };
+  if (!labels[route] || state.adminActionInFlight) return;
+  if (!window.confirm(`Confirmar ação: ${labels[route]}? Esta alteração será registrada no histórico.`)) return;
+  state.adminActionInFlight = true;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Atualizando..."; }
+  try {
+    const result = await api(route, { method: "POST", body: JSON.stringify({ ticketId }) });
+    notify(result.alreadyApplied ? "A ação já havia sido aplicada." : "Ticket atualizado com segurança.", "success");
+    await loadAdminTickets(true);
+  } catch (error) {
+    notify(error.message || "Não foi possível atualizar o ticket.", "error");
+  } finally {
+    state.adminActionInFlight = false;
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
 async function openAdmin() {
   hideAll();
   show($("#admin-modal"));
@@ -565,9 +743,13 @@ async function openAdmin() {
   }
   list.innerHTML = '<p class="empty">Conferindo sua permissão no servidor...</p>';
   try {
-    const result = await api("/admin/orders");
+    const [result, ticketResult] = await Promise.all([api("/admin/orders"), api("/admin/tickets?pageSize=25")]);
     state.adminOrders = result.orders || [];
     state.adminCustomers = result.customers || {};
+    state.adminTickets = ticketResult.tickets || [];
+    state.adminTicketActors = ticketResult.actors || {};
+    state.adminTicketNextPageToken = ticketResult.nextPageToken || null;
+    state.adminSelectedTicketId = null;
     state.adminEvents = {};
     state.adminEventActors = {};
     state.adminSelectedOrderId = null;
@@ -693,7 +875,11 @@ onAuthStateChanged(auth, async user => {
     await loadAccount();
   } else {
     state.orders = [];
+    state.tickets = [];
     state.adminOrders = [];
+    state.adminTickets = [];
+    state.adminTicketActors = {};
+    state.adminTicketNextPageToken = null;
     state.adminCustomers = {};
     state.adminEvents = {};
     state.adminEventActors = {};
