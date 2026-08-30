@@ -8,6 +8,7 @@ import {
   setPersistence,
   browserLocalPersistence,
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, query, orderBy, limit, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseApp = initializeApp({
   apiKey: "AIzaSyDin9ClqtwrbiXQ0JugerTttEwa6pMh9es",
@@ -20,9 +21,10 @@ const firebaseApp = initializeApp({
 
 const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
+const firestoreDb = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -43,6 +45,7 @@ function show(element) {
 }
 
 function hideAll() {
+  stopMessageListener();
   document.querySelectorAll(".drawer.is-open, .modal.is-open, .products.is-open, .overlay.is-open")
     .forEach(element => element.classList.remove("is-open"));
 }
@@ -270,7 +273,7 @@ function statusLabel(status) {
 
 function formatDateTime(value) {
   if (!value) return "Data não disponível";
-  const date = new Date(value);
+  const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
   return Number.isNaN(date.getTime()) ? "Data não disponível" : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 }
 
@@ -301,7 +304,7 @@ function renderOrders() {
     list.innerHTML = `${customerTabs()}${state.tickets.length ? state.tickets.map(ticket => `
       <article class="ticket ticket-new">
         <div class="ticket-orb">◌</div>
-        <div class="ticket-data"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}</h3><p>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())}</p><small>Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}</small></div>
+        <div class="ticket-data"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}${Number(ticket.customerUnreadCount || 0) ? ` <b class="ticket-unread">${Number(ticket.customerUnreadCount || 0)} nova${Number(ticket.customerUnreadCount || 0) === 1 ? "" : "s"}</b>` : ""}</h3><p>${escapeHtml(ticket.lastMessagePreview || `Pedido #${ticket.orderId.slice(0, 10).toUpperCase()}`)}</p><small>${ticket.lastMessageAt ? `Última mensagem em ${escapeHtml(formatDateTime(ticket.lastMessageAt))}` : `Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}`}</small></div>
         <button data-ticket="${escapeHtml(ticket.id)}">Ver ticket →</button>
       </article>`).join("") : '<div class="empty-info"><span>◌</span><strong>Nenhum ticket aberto</strong><p>Quando o atendimento do seu pedido for liberado, ele aparecerá aqui.</p></div>'}`;
     document.querySelectorAll("[data-ticket]").forEach(button => button.onclick = () => openTicket(button.dataset.ticket));
@@ -339,7 +342,77 @@ async function openOrders() {
   }
 }
 
+function stopMessageListener() {
+  if (typeof state.unsubscribeMessages === "function") state.unsubscribeMessages();
+  state.unsubscribeMessages = null;
+  state.activeTicketId = null;
+}
+
+function renderTicketMessages(ticketId, messages) {
+  const container = $("#ticket-messages");
+  if (!container || state.activeTicketId !== ticketId) return;
+  container.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "Ainda não há mensagens. Inicie a conversa quando precisar.";
+    container.appendChild(empty);
+    return;
+  }
+  for (const message of messages) {
+    const article = document.createElement("article");
+    const isMine = message.senderUid === state.user?.uid;
+    article.className = `message ${isMine ? "mine" : ""} ${message.senderRole === "ADMIN" ? "admin" : "customer"}`.trim();
+    const meta = document.createElement("small");
+    meta.textContent = `${message.senderRole === "ADMIN" ? "Atendimento" : "Cliente"} · ${formatDateTime(message.createdAt)}`;
+    const text = document.createElement("p");
+    text.textContent = message.text || "";
+    article.append(meta, text);
+    container.appendChild(article);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function startMessageListener(ticket) {
+  stopMessageListener();
+  state.activeTicketId = ticket.id;
+  const messageQuery = query(collection(firestoreDb, "tickets", ticket.id, "messages"), orderBy("createdAt", "asc"), limit(100));
+  let firstSnapshot = true;
+  state.unsubscribeMessages = onSnapshot(messageQuery, snapshot => {
+    renderTicketMessages(ticket.id, snapshot.docs.map(document => ({ id: document.id, ...document.data({ serverTimestamps: "estimate" }) })));
+    if (firstSnapshot) {
+      firstSnapshot = false;
+      api(`/tickets/${encodeURIComponent(ticket.id)}/read`, { method: "POST", body: "{}" }).catch(() => {});
+    }
+  }, () => {
+    const container = $("#ticket-messages");
+    if (container && state.activeTicketId === ticket.id) container.textContent = "Não foi possível atualizar as mensagens agora.";
+  });
+}
+
+async function sendTicketMessage(ticketId, form) {
+  if (state.messageSending) return;
+  const input = $("#ticket-message-text");
+  const button = form?.querySelector("button[type=submit]");
+  const text = input?.value?.trim() || "";
+  if (!text) { notify("Escreva uma mensagem antes de enviar.", "error"); return; }
+  state.messageSending = true;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Enviando..."; }
+  try {
+    await api(`/tickets/${encodeURIComponent(ticketId)}/messages`, { method: "POST", body: JSON.stringify({ text }) });
+    if (input) input.value = "";
+  } catch (error) {
+    notify(error.message || "Não foi possível enviar a mensagem.", "error");
+  } finally {
+    state.messageSending = false;
+    if (button) { button.disabled = false; button.textContent = original; }
+  }
+}
+
 async function openTicket(ticketId) {
+  stopMessageListener();
+  show($("#tickets-modal"));
   const modal = $("#tickets-modal .modal-box");
   modal.innerHTML = '<button class="close" data-close aria-label="Fechar">×</button><p class="empty">Carregando ticket...</p>';
   try {
@@ -350,11 +423,13 @@ async function openTicket(ticketId) {
       <button class="close" data-close aria-label="Fechar">×</button>
       <div class="ticket-view-head"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><p>TICKET #${escapeHtml(ticket.id.slice(-10).toUpperCase())}</p><h2>${escapeHtml(ticket.subject || "Atendimento")}</h2><span>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())}</span></div>
       <div class="order-summary"><div><small>STATUS DO TICKET</small><strong>${escapeHtml(ticketStatusLabel(ticket.status))}</strong></div><div><small>STATUS DO PEDIDO</small><strong>${escapeHtml(statusLabel(relatedOrder?.status))}</strong></div><div><small>CRIADO EM</small><strong>${escapeHtml(formatDateTime(ticket.createdAt))}</strong></div><div><small>ÚLTIMA ATUALIZAÇÃO</small><strong>${escapeHtml(formatDateTime(ticket.updatedAt))}</strong></div></div>
-      <div class="ticket-empty-chat"><strong>Conversa do atendimento</strong><p>O chat será conectado em uma próxima etapa. Nenhuma mensagem foi criada nesta tela.</p></div>
+      <section class="ticket-chat" aria-label="Conversa do ticket"><div class="ticket-chat-head"><strong>Conversa do atendimento</strong><span>Mensagens salvas com segurança</span></div><div class="messages" id="ticket-messages"><p class="empty">Carregando mensagens...</p></div>${["OPEN", "IN_PROGRESS"].includes(ticket.status) ? `<form class="message-form" id="ticket-message-form"><label class="sr-only" for="ticket-message-text">Mensagem</label><textarea id="ticket-message-text" maxlength="2000" rows="3" placeholder="Escreva sua mensagem..."></textarea><button class="button primary" type="submit">Enviar</button></form><small class="message-limit">Até 2.000 caracteres. Mensagens não podem ser apagadas.</small>` : `<div class="ticket-chat-locked">🔒 Este ticket foi fechado ou arquivado. O histórico continua disponível.</div>`}</section>
       <div class="ticket-history"><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : '<p>Histórico anterior indisponível.</p>'}</div>
       ${relatedOrder ? `<button class="button admin-secondary" data-ticket-order="${escapeHtml(relatedOrder.id)}">Ver pedido</button>` : ""}<button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
     $("[data-back-tickets]")?.addEventListener("click", openOrders);
     $("[data-ticket-order]")?.addEventListener("click", () => openOrder(ticket.orderId));
+    $("#ticket-message-form")?.addEventListener("submit", event => { event.preventDefault(); sendTicketMessage(ticket.id, event.currentTarget); });
+    startMessageListener(ticket);
   } catch (error) {
     modal.innerHTML = `<button class="close" data-close aria-label="Fechar">×</button><p class="empty">${escapeHtml(error.message || "Não foi possível carregar o ticket.")}</p><button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
     $("[data-back-tickets]")?.addEventListener("click", openOrders);
@@ -501,7 +576,7 @@ function renderAdminTickets() {
     const admin = state.adminTicketActors[ticket.assignedAdminUid] || {};
     const action = ticketAction(ticket);
     const selected = state.adminSelectedTicketId === ticket.id;
-    return `<article class="admin-order admin-ticket"><div><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}</h3><p>${escapeHtml(owner.displayName || "Cliente")} · ${escapeHtml(owner.email || ticket.ownerId)}</p><small>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}${admin.displayName ? ` · Responsável: ${escapeHtml(admin.displayName)}` : " · Sem responsável"}</small>${selected ? `<div class="admin-detail" id="admin-ticket-detail-${escapeHtml(ticket.id)}"><p>Carregando detalhes...</p></div>` : ""}</div><div class="admin-actions"><button class="button admin-secondary" data-ticket-detail="${escapeHtml(ticket.id)}">${selected ? "Ocultar detalhes" : "Ver ticket"}</button>${!ticket.assignedAdminUid && ticket.status !== "ARCHIVED" ? `<button class="button admin-secondary" data-ticket-assign="${escapeHtml(ticket.id)}">Assumir</button>` : ""}${action ? `<button class="button primary" data-ticket-action="${escapeHtml(action.route)}" data-ticket-id="${escapeHtml(ticket.id)}">${escapeHtml(action.label)}</button>` : ""}${ticket.status === "CLOSED" ? `<button class="button admin-secondary" data-ticket-action="/admin/ticket/archive" data-ticket-id="${escapeHtml(ticket.id)}">Arquivar</button>` : ""}</div></article>`;
+    return `<article class="admin-order admin-ticket"><div><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}${Number(ticket.adminUnreadCount || 0) ? ` <b class="ticket-unread">${Number(ticket.adminUnreadCount || 0)} nova${Number(ticket.adminUnreadCount || 0) === 1 ? "" : "s"}</b>` : ""}</h3><p>${escapeHtml(ticket.lastMessagePreview || `${owner.displayName || "Cliente"} · ${owner.email || ticket.ownerId}`)}</p><small>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · ${ticket.lastMessageAt ? `Última mensagem em ${escapeHtml(formatDateTime(ticket.lastMessageAt))}` : `Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}`}${admin.displayName ? ` · Responsável: ${escapeHtml(admin.displayName)}` : " · Sem responsável"}</small>${selected ? `<div class="admin-detail" id="admin-ticket-detail-${escapeHtml(ticket.id)}"><p>Carregando detalhes...</p></div>` : ""}</div><div class="admin-actions"><button class="button admin-secondary" data-ticket-detail="${escapeHtml(ticket.id)}">${selected ? "Ocultar detalhes" : "Ver ticket"}</button>${!ticket.assignedAdminUid && ticket.status !== "ARCHIVED" ? `<button class="button admin-secondary" data-ticket-assign="${escapeHtml(ticket.id)}">Assumir</button>` : ""}${action ? `<button class="button primary" data-ticket-action="${escapeHtml(action.route)}" data-ticket-id="${escapeHtml(ticket.id)}">${escapeHtml(action.label)}</button>` : ""}${ticket.status === "CLOSED" ? `<button class="button admin-secondary" data-ticket-action="/admin/ticket/archive" data-ticket-id="${escapeHtml(ticket.id)}">Arquivar</button>` : ""}</div></article>`;
   }).join("");
   document.querySelectorAll("[data-ticket-detail]").forEach(button => button.addEventListener("click", () => openAdminTicketDetail(button.dataset.ticketDetail)));
   document.querySelectorAll("[data-ticket-assign]").forEach(button => button.addEventListener("click", () => runTicketAction(button.dataset.ticketAssign, "/admin/ticket/assignSelf", button)));
@@ -707,7 +782,10 @@ async function openAdminTicketDetail(ticketId) {
     const result = await api(`/tickets/${encodeURIComponent(ticketId)}`);
     const ticket = result.ticket;
     const assigned = result.actors?.[ticket.assignedAdminUid] || {};
-    if (detail) detail.innerHTML = `<strong>Detalhes do ticket</strong><p>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · ${escapeHtml(ticket.subject || "Atendimento")}</p><p>Responsável: ${escapeHtml(assigned.displayName || "Sem responsável")}</p><p>Chat ainda não foi ativado; não há mensagens nesta etapa.</p><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type)}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : "<p>Histórico anterior indisponível.</p>"}`;
+    if (detail) {
+      detail.innerHTML = `<strong>Detalhes do ticket</strong><p>Pedido #${escapeHtml(ticket.orderId.slice(0, 10).toUpperCase())} · ${escapeHtml(ticket.subject || "Atendimento")}</p><p>Responsável: ${escapeHtml(assigned.displayName || "Sem responsável")}</p><button class="button admin-secondary" data-admin-open-conversation="${escapeHtml(ticket.id)}">Abrir conversa</button><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type)}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : "<p>Histórico anterior indisponível.</p>"}`;
+      detail.querySelector("[data-admin-open-conversation]")?.addEventListener("click", () => { hideAll(); openTicket(ticket.id); });
+    }
   } catch (error) {
     if (detail) detail.innerHTML = `<p>${escapeHtml(error.message || "Não foi possível carregar os detalhes.")}</p>`;
   }
