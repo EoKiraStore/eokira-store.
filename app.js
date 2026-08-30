@@ -22,7 +22,7 @@ const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, adminEvents: {}, adminSearch: "", adminStatus: "ALL", adminSelectedOrderId: null, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -236,6 +236,7 @@ async function submitOrders(event) {
   if (state.submitting || !state.cart.length) return;
   if (!(await requireSignedIn())) return;
   state.submitting = true;
+  state.checkoutAttemptId ||= crypto.randomUUID().replaceAll("-", "");
   const button = event.currentTarget.querySelector("button[type='submit']");
   const original = button.textContent;
   button.disabled = true;
@@ -243,14 +244,15 @@ async function submitOrders(event) {
   try {
     const order = await api("/createOrder", {
       method: "POST",
-      body: JSON.stringify({ items: state.cart.map(item => ({ productId: item.productId, quantity: item.quantity })) }),
+      body: JSON.stringify({ checkoutId: state.checkoutAttemptId, items: state.cart.map(item => ({ productId: item.productId, quantity: item.quantity })) }),
     });
     state.cart = [];
+    state.checkoutAttemptId = null;
     await loadAccount();
     renderCart();
     hideAll();
     const discountMessage = order.discountCents > 0 ? ` Desconto reservado: ${currencyFromCents(order.discountCents)}.` : "";
-    notify(`Pedido criado por ${currencyFromCents(order.totalCents)}.${discountMessage}`, "success");
+    notify(order.alreadyApplied ? "Pedido já havia sido registrado e foi recuperado com segurança." : `Pedido criado por ${currencyFromCents(order.totalCents)}.${discountMessage}`, "success");
     await openOrders();
   } catch (error) {
     notify(error.message || "Não foi possível criar o pedido.", "error");
@@ -340,7 +342,7 @@ function openOrder(orderId) {
     ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? `<button class="button cancel-order" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>` : ""}
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
   $("[data-back-orders]")?.addEventListener("click", openOrders);
-  $("[data-cancel-order]")?.addEventListener("click", () => cancelOrder(order.id));
+  $("[data-cancel-order]")?.addEventListener("click", event => cancelOrder(order.id, event.currentTarget));
 }
 
 function renderReviews() {
@@ -366,11 +368,17 @@ function ensureAdminPanelUi() {
   if (!list || $("#admin-summary")) return;
   list.insertAdjacentHTML("beforebegin", `
     <p class="admin-payment-note">Pagamentos só serão confirmados automaticamente quando a integração PIX for ativada.</p>
+    <div class="admin-tabs" role="tablist"><button class="admin-tab is-active" type="button" data-admin-view="orders">Pedidos</button><button class="admin-tab" type="button" data-admin-view="audit">Auditoria</button></div>
     <div class="admin-summary" id="admin-summary" aria-live="polite"></div>
     <div class="admin-toolbar">
       <label><span>Buscar</span><input id="admin-order-search" type="search" placeholder="ID, nome, e-mail ou produto" autocomplete="off" /></label>
       <label><span>Status</span><select id="admin-status-filter"><option value="ALL">Todos os status</option></select></label>
-    </div>`);
+    </div>
+    <section id="admin-audit-panel" class="admin-audit-panel" hidden>
+      <div class="admin-toolbar"><label><span>Buscar logs</span><input id="admin-audit-search" type="search" placeholder="Pedido, administrador ou ação" autocomplete="off" /></label><label><span>Categoria</span><select id="admin-audit-category"><option value="ALL">Todas</option><option value="ORDERS">Pedidos</option><option value="STATUS">Status</option><option value="PAYMENTS">Pagamentos</option><option value="SECURITY">Segurança</option></select></label><label><span>Período</span><select id="admin-audit-period"><option value="ALL">Todos</option><option value="TODAY">Hoje</option><option value="7D">Últimos 7 dias</option><option value="30D">Últimos 30 dias</option></select></label></div>
+      <div id="admin-audit-list"><p class="empty">A auditoria será carregada ao abrir esta aba.</p></div>
+      <button class="button admin-secondary" id="admin-audit-more" type="button" hidden>Carregar mais</button>
+    </section>`);
 }
 
 function renderAdminOrders() {
@@ -396,11 +404,11 @@ function renderAdminOrders() {
       <div><span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span><h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
       <p>${escapeHtml(customer.displayName || "Cliente")} · ${escapeHtml(customer.email || order.userId)}</p>
       <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")} · Criado em ${escapeHtml(formatDateTime(order.createdAt))}</small>
-      ${isSelected ? `<div class="admin-detail"><strong>Histórico do pedido</strong>${events === undefined ? '<p>Carregando histórico...</p>' : events.length ? `<ol class="admin-timeline">${events.map(event => `<li><strong>${escapeHtml(statusLabel(event.to))}</strong><span>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`).join("")}</ol>` : '<p>Nenhuma alteração registrada além da criação.</p>'}</div>` : ""}</div>
+      ${isSelected ? `<div class="admin-detail"><strong>Histórico do pedido</strong>${events === undefined ? '<p>Carregando histórico...</p>' : events.length ? `<ol class="admin-timeline">${events.map(event => { const actor = state.adminEventActors[event.actorUid] || {}; return `<li><strong>${escapeHtml(statusLabel(event.to))}</strong><span>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")} · ${escapeHtml(actor.displayName || "Sistema/usuário")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : '<p>Histórico anterior indisponível.</p>'}</div>` : ""}</div>
       <div class="admin-actions"><button class="button admin-secondary" data-admin-detail="${escapeHtml(order.id)}">${isSelected ? "Ocultar detalhes" : "Ver detalhes"}</button><button class="button admin-secondary" data-copy-order="${escapeHtml(order.id)}">Copiar ID</button>${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}</div>
     </article>`;
   }).join("");
-  document.querySelectorAll("[data-admin-action]").forEach(button => button.addEventListener("click", () => runAdminAction(button.dataset.adminOrder, button.dataset.adminAction)));
+  document.querySelectorAll("[data-admin-action]").forEach(button => button.addEventListener("click", () => runAdminAction(button.dataset.adminOrder, button.dataset.adminAction, button)));
   document.querySelectorAll("[data-admin-detail]").forEach(button => button.addEventListener("click", () => toggleAdminDetail(button.dataset.adminDetail)));
   document.querySelectorAll("[data-copy-order]").forEach(button => button.addEventListener("click", () => copyOrderId(button.dataset.copyOrder)));
 }
@@ -431,6 +439,90 @@ function bindAdminControls() {
     filter.value = statuses.includes(state.adminStatus) ? state.adminStatus : "ALL";
   }
   if (search) search.value = state.adminSearch;
+  document.querySelectorAll("[data-admin-view]").forEach(button => button.onclick = () => switchAdminView(button.dataset.adminView));
+  const auditSearch = $("#admin-audit-search");
+  const auditCategory = $("#admin-audit-category");
+  const auditPeriod = $("#admin-audit-period");
+  if (auditSearch && !auditSearch.dataset.bound) {
+    auditSearch.dataset.bound = "true";
+    auditSearch.addEventListener("input", () => { state.auditSearch = auditSearch.value; renderAuditLogs(); });
+  }
+  if (auditCategory && !auditCategory.dataset.bound) {
+    auditCategory.dataset.bound = "true";
+    auditCategory.addEventListener("change", () => { state.auditCategory = auditCategory.value; renderAuditLogs(); });
+  }
+  if (auditPeriod && !auditPeriod.dataset.bound) {
+    auditPeriod.dataset.bound = "true";
+    auditPeriod.addEventListener("change", () => { state.auditPeriod = auditPeriod.value; renderAuditLogs(); });
+  }
+  if (auditSearch) auditSearch.value = state.auditSearch;
+  if (auditCategory) auditCategory.value = state.auditCategory;
+  if (auditPeriod) auditPeriod.value = state.auditPeriod;
+  $("#admin-audit-more")?.addEventListener("click", () => loadAuditLogs(false));
+}
+
+function auditLabel(log) {
+  return log.reason || log.type || log.action || "AÇÃO REGISTRADA";
+}
+
+function auditMatchesPeriod(log) {
+  if (state.auditPeriod === "ALL" || !log.createdAt) return true;
+  const date = new Date(log.createdAt);
+  if (Number.isNaN(date.getTime())) return false;
+  const now = new Date();
+  const days = state.auditPeriod === "TODAY" ? 1 : Number(state.auditPeriod.replace("D", ""));
+  return date.getTime() >= now.getTime() - days * 24 * 60 * 60 * 1000;
+}
+
+function renderAuditLogs() {
+  const list = $("#admin-audit-list");
+  const more = $("#admin-audit-more");
+  if (!list) return;
+  const query = state.auditSearch.trim().toLocaleLowerCase("pt-BR");
+  const logs = state.auditLogs.filter(log => {
+    const actor = state.auditActors[log.actorUid || log.userId] || {};
+    const searchable = [log.orderId, auditLabel(log), actor.displayName, actor.email, log.category].join(" ").toLocaleLowerCase("pt-BR");
+    return (state.auditCategory === "ALL" || log.category === state.auditCategory) && auditMatchesPeriod(log) && (!query || searchable.includes(query));
+  });
+  list.innerHTML = logs.length ? `<div class="audit-list">${logs.map(log => {
+    const actor = state.auditActors[log.actorUid || log.userId] || {};
+    const change = log.from || log.to ? `${statusLabel(log.from) || "—"} → ${statusLabel(log.to) || "—"}` : "Registro criado";
+    return `<article class="audit-row"><div><span class="audit-category">${escapeHtml(log.category || "ORDERS")}</span><strong>${escapeHtml(auditLabel(log))}</strong><p>${escapeHtml(change)} · Pedido ${escapeHtml(log.orderId ? `#${log.orderId.slice(0, 10).toUpperCase()}` : "não associado")}</p><small>${escapeHtml(actor.displayName || "Sistema/usuário")} ${actor.email ? `· ${escapeHtml(actor.email)}` : ""}</small></div><time>${escapeHtml(formatDateTime(log.createdAt))}</time></article>`;
+  }).join("")}</div>` : '<p class="empty">Nenhum registro encontrado.</p>';
+  if (more) more.hidden = !state.auditNextPageToken || state.auditLoading;
+}
+
+async function loadAuditLogs(reset = true) {
+  if (state.auditLoading || (!reset && !state.auditNextPageToken)) return;
+  state.auditLoading = true;
+  const list = $("#admin-audit-list");
+  if (reset && list) list.innerHTML = '<p class="empty">Carregando auditoria...</p>';
+  try {
+    const params = new URLSearchParams({ pageSize: "25" });
+    if (!reset && state.auditNextPageToken) params.set("pageToken", state.auditNextPageToken);
+    const result = await api(`/admin/audit?${params.toString()}`);
+    state.auditLogs = reset ? (result.logs || []) : [...state.auditLogs, ...(result.logs || [])];
+    state.auditActors = { ...state.auditActors, ...(result.actors || {}) };
+    state.auditNextPageToken = result.nextPageToken || null;
+  } catch (error) {
+    if (list) list.innerHTML = `<p class="empty">${escapeHtml(error.message || "Não foi possível carregar a auditoria.")}</p>`;
+  } finally {
+    state.auditLoading = false;
+    renderAuditLogs();
+  }
+}
+
+async function switchAdminView(view) {
+  if (!state.isAdmin || !["orders", "audit"].includes(view)) return;
+  state.adminView = view;
+  const auditPanel = $("#admin-audit-panel");
+  const list = $("#admin-orders-list");
+  document.querySelectorAll("[data-admin-view]").forEach(button => button.classList.toggle("is-active", button.dataset.adminView === view));
+  if (list) list.hidden = view !== "orders";
+  $("#admin-summary")?.toggleAttribute("hidden", view !== "orders");
+  $("#admin-order-search")?.closest(".admin-toolbar")?.toggleAttribute("hidden", view !== "orders");
+  if (auditPanel) auditPanel.hidden = view !== "audit";
+  if (view === "audit" && !state.auditLogs.length) await loadAuditLogs(true);
 }
 
 async function toggleAdminDetail(orderId) {
@@ -445,6 +537,7 @@ async function toggleAdminDetail(orderId) {
   try {
     const result = await api(`/admin/orderEvents?orderId=${encodeURIComponent(orderId)}`);
     state.adminEvents[orderId] = result.events || [];
+    state.adminEventActors = { ...state.adminEventActors, ...(result.actors || {}) };
   } catch (error) {
     state.adminEvents[orderId] = [];
     notify(error.message || "Não foi possível carregar o histórico.", "error");
@@ -476,30 +569,46 @@ async function openAdmin() {
     state.adminOrders = result.orders || [];
     state.adminCustomers = result.customers || {};
     state.adminEvents = {};
+    state.adminEventActors = {};
     state.adminSelectedOrderId = null;
+    state.adminView = "orders";
+    state.auditLogs = [];
+    state.auditActors = {};
+    state.auditNextPageToken = null;
     bindAdminControls();
     renderAdminOrders();
+    await switchAdminView("orders");
   } catch (error) {
     list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
   }
 }
 
-async function runAdminAction(orderId, route) {
+async function runAdminAction(orderId, route, button) {
   const allowedRoutes = new Set(["/admin/openTicket", "/admin/startService", "/admin/completeService"]);
-  if (!allowedRoutes.has(route)) return;
+  if (!allowedRoutes.has(route) || state.adminActionInFlight) return;
   const labels = { "/admin/openTicket": "abrir o ticket", "/admin/startService": "iniciar o serviço", "/admin/completeService": "marcar o serviço como concluído" };
   if (!window.confirm(`Confirmar ação: ${labels[route]}? Esta alteração será registrada no histórico.`)) return;
+  state.adminActionInFlight = true;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Salvando..."; }
   try {
     const result = await api(route, { method: "POST", body: JSON.stringify({ orderId }) });
     notify(result.alreadyApplied ? "A ação já havia sido aplicada." : "Ação concluída e registrada na auditoria.", "success");
     await openAdmin();
   } catch (error) {
     notify(error.message, "error");
+  } finally {
+    state.adminActionInFlight = false;
+    if (button) { button.disabled = false; button.textContent = original; }
   }
 }
 
-async function cancelOrder(orderId) {
+async function cancelOrder(orderId, button) {
+  if (state.cancelInFlight) return;
   if (!window.confirm("Cancelar este pedido? Se houver desconto reservado, ele será liberado.")) return;
+  state.cancelInFlight = true;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Cancelando..."; }
   try {
     const result = await api("/cancelOrder", { method: "POST", body: JSON.stringify({ orderId }) });
     notify(result.alreadyApplied ? "O pedido já estava cancelado." : "Pedido cancelado com segurança.", "success");
@@ -507,6 +616,9 @@ async function cancelOrder(orderId) {
     await openOrders();
   } catch (error) {
     notify(error.message, "error");
+  } finally {
+    state.cancelInFlight = false;
+    if (button) { button.disabled = false; button.textContent = original; }
   }
 }
 const wonsQuantity = $("#wons-quantity");
@@ -583,7 +695,13 @@ onAuthStateChanged(auth, async user => {
     state.orders = [];
     state.adminOrders = [];
     state.adminCustomers = {};
+    state.adminEvents = {};
+    state.adminEventActors = {};
+    state.auditLogs = [];
+    state.auditActors = {};
+    state.auditNextPageToken = null;
     state.cart = [];
+    state.checkoutAttemptId = null;
     updateAccountButton();
     renderCart();
   }
