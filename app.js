@@ -22,7 +22,7 @@ const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -101,11 +101,12 @@ function updateAccountButton() {
     button.title = "";
     return;
   }
-  const isAdmin = state.account?.role === "admin";
+  const isAdmin = state.isAdmin;
   const firstName = state.user.displayName?.split(" ")[0] || "Minha conta";
   button.textContent = isAdmin ? "Admin · Sair" : `${firstName} · Sair`;
   button.classList.toggle("admin", isAdmin);
   button.title = state.user.email || "";
+  document.querySelectorAll("[data-open-admin]").forEach(item => { item.hidden = !state.isAdmin; });
 }
 
 async function loadAccount() {
@@ -262,7 +263,7 @@ async function submitOrders(event) {
 }
 
 function statusLabel(status) {
-  return ({ AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", COMPLETED: "CONCLUÍDO" })[status] || status || "EM ANÁLISE";
+  return ({ AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", TICKET_OPEN: "TICKET ABERTO", IN_PROGRESS: "EM ANDAMENTO", COMPLETED: "CONCLUÍDO" })[status] || status || "EM ANÁLISE";
 }
 
 function orderProduct(order) {
@@ -343,6 +344,64 @@ function renderReviews() {
     <div class="empty-info"><span>★</span><strong>Somente compradores confirmados</strong><p>A avaliação será liberada pelo servidor apenas após o pedido ficar concluído.</p><button class="button primary" data-open-products>Ver produtos <span>→</span></button></div>`;
 }
 
+function nextAdminStatus(order) {
+  if (order.paymentStatus !== "PAID") return null;
+  return ({ PAYMENT_CONFIRMED: "TICKET_OPEN", TICKET_OPEN: "IN_PROGRESS", IN_PROGRESS: "COMPLETED" })[order.status] || null;
+}
+
+function adminStatusAction(status) {
+  return ({ TICKET_OPEN: "Abrir ticket", IN_PROGRESS: "Iniciar serviço", COMPLETED: "Concluir serviço" })[status] || status;
+}
+
+function renderAdminOrders() {
+  const list = $("#admin-orders-list");
+  if (!list) return;
+  if (!state.adminOrders.length) {
+    list.innerHTML = '<p class="empty">Nenhum pedido encontrado.</p>';
+    return;
+  }
+  list.innerHTML = state.adminOrders.map(order => {
+    const customer = state.adminCustomers[order.userId] || {};
+    const next = nextAdminStatus(order);
+    return `<article class="admin-order">
+      <div><span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span><h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
+      <p>${escapeHtml(customer.displayName || "Cliente")} · ${escapeHtml(customer.email || order.userId)}</p>
+      <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")}</small></div>
+      ${next ? `<button class="button primary" data-admin-status="${escapeHtml(next)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(adminStatusAction(next))}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}
+    </article>`;
+  }).join("");
+  document.querySelectorAll("[data-admin-status]").forEach(button => button.addEventListener("click", () => updateAdminOrderStatus(button.dataset.adminOrder, button.dataset.adminStatus)));
+}
+
+async function openAdmin() {
+  hideAll();
+  show($("#admin-modal"));
+  const list = $("#admin-orders-list");
+  if (!state.isAdmin) {
+    list.innerHTML = '<p class="empty">Acesso administrativo não autorizado.</p>';
+    return;
+  }
+  list.innerHTML = '<p class="empty">Conferindo sua permissão no servidor...</p>';
+  try {
+    const result = await api("/admin/orders");
+    state.adminOrders = result.orders || [];
+    state.adminCustomers = result.customers || {};
+    renderAdminOrders();
+  } catch (error) {
+    list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function updateAdminOrderStatus(orderId, toStatus) {
+  try {
+    await api("/admin/updateOrderStatus", { method: "POST", body: JSON.stringify({ orderId, toStatus }) });
+    notify("Status atualizado e registrado na auditoria.", "success");
+    await openAdmin();
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
 const wonsQuantity = $("#wons-quantity");
 const wonsPrice = $("#wons-price");
 const rollQuantity = $("#roll-quantity");
@@ -389,7 +448,7 @@ document.addEventListener("click", async event => {
     state.user ? await signOut(auth) : await enterWithGoogle();
     return;
   }
-  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-close]");
+  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-open-admin],[data-close]");
   if (!target) return;
   event.preventDefault();
   if (target.matches("[data-close]")) {
@@ -402,16 +461,23 @@ document.addEventListener("click", async event => {
   else if (target.matches("[data-open-tickets]")) await openOrders();
   else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
   else if (target.matches("[data-open-faq]")) show($("#faq-modal"));
+  else if (target.matches("[data-open-admin]")) await openAdmin();
 });
 
 onAuthStateChanged(auth, async user => {
   state.user = user;
   state.account = null;
-  updateAccountButton();
-  if (user) await loadAccount();
-  else {
+  state.isAdmin = false;
+  if (user) {
+    const tokenResult = await user.getIdTokenResult(true);
+    state.isAdmin = tokenResult.claims.admin === true;
+    await loadAccount();
+  } else {
     state.orders = [];
+    state.adminOrders = [];
+    state.adminCustomers = {};
     state.cart = [];
+    updateAccountButton();
     renderCart();
   }
 });
@@ -419,6 +485,3 @@ onAuthStateChanged(auth, async user => {
 renderCart();
 renderReviews();
 loadProducts();
-
-
-
