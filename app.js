@@ -22,7 +22,7 @@ const API_URL = "https://eokira-store-api.contadvzadas202020.workers.dev";
 const auth = getAuth(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], adminOrders: [], adminCustomers: {}, adminEvents: {}, adminSearch: "", adminStatus: "ALL", adminSelectedOrderId: null, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 
@@ -266,6 +266,12 @@ function statusLabel(status) {
   return ({ CREATED: "CRIADO", AWAITING_PAYMENT: "AGUARDANDO PAGAMENTO", PAYMENT_FOUND: "PAGAMENTO LOCALIZADO", PAYMENT_CONFIRMED: "PAGAMENTO CONFIRMADO", TICKET_OPEN: "TICKET ABERTO", IN_PROGRESS: "EM ANDAMENTO", COMPLETED: "CONCLUÍDO", PAYMENT_EXPIRED: "PAGAMENTO EXPIRADO", CANCELLED: "CANCELADO", REFUNDED: "REEMBOLSADO" })[status] || status || "EM ANÁLISE";
 }
 
+function formatDateTime(value) {
+  if (!value) return "Data não disponível";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Data não disponível" : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
 function orderProduct(order) {
   return order.items?.length
     ? order.items.map(item => `${item.quantity} × ${item.name}`).join(" + ")
@@ -355,29 +361,110 @@ function nextAdminAction(order) {
   })[order.status] || null;
 }
 
+function ensureAdminPanelUi() {
+  const list = $("#admin-orders-list");
+  if (!list || $("#admin-summary")) return;
+  list.insertAdjacentHTML("beforebegin", `
+    <p class="admin-payment-note">Pagamentos só serão confirmados automaticamente quando a integração PIX for ativada.</p>
+    <div class="admin-summary" id="admin-summary" aria-live="polite"></div>
+    <div class="admin-toolbar">
+      <label><span>Buscar</span><input id="admin-order-search" type="search" placeholder="ID, nome, e-mail ou produto" autocomplete="off" /></label>
+      <label><span>Status</span><select id="admin-status-filter"><option value="ALL">Todos os status</option></select></label>
+    </div>`);
+}
+
 function renderAdminOrders() {
   const list = $("#admin-orders-list");
   if (!list) return;
-  if (!state.adminOrders.length) {
-    list.innerHTML = '<p class="empty">Nenhum pedido encontrado.</p>';
+  const query = state.adminSearch.trim().toLocaleLowerCase("pt-BR");
+  const orders = state.adminOrders.filter(order => {
+    const customer = state.adminCustomers[order.userId] || {};
+    const searchable = [order.id, orderProduct(order), customer.displayName, customer.email].join(" ").toLocaleLowerCase("pt-BR");
+    return (state.adminStatus === "ALL" || order.status === state.adminStatus) && (!query || searchable.includes(query));
+  });
+  renderAdminSummary(orders);
+  if (!orders.length) {
+    list.innerHTML = '<p class="empty">Nenhum pedido encontrado para este filtro.</p>';
     return;
   }
-  list.innerHTML = state.adminOrders.map(order => {
+  list.innerHTML = orders.map(order => {
     const customer = state.adminCustomers[order.userId] || {};
     const action = nextAdminAction(order);
+    const events = state.adminEvents[order.id];
+    const isSelected = state.adminSelectedOrderId === order.id;
     return `<article class="admin-order">
       <div><span class="ticket-status pending">${escapeHtml(statusLabel(order.status))}</span><h3>#${escapeHtml(order.id.slice(0, 10).toUpperCase())} · ${escapeHtml(orderProduct(order))}</h3>
       <p>${escapeHtml(customer.displayName || "Cliente")} · ${escapeHtml(customer.email || order.userId)}</p>
-      <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")}</small></div>
-      ${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}
+      <small>Total ${currencyFromCents(order.totalCents)} · Pagamento ${escapeHtml(order.paymentStatus || "UNPAID")} · Criado em ${escapeHtml(formatDateTime(order.createdAt))}</small>
+      ${isSelected ? `<div class="admin-detail"><strong>Histórico do pedido</strong>${events === undefined ? '<p>Carregando histórico...</p>' : events.length ? `<ol class="admin-timeline">${events.map(event => `<li><strong>${escapeHtml(statusLabel(event.to))}</strong><span>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`).join("")}</ol>` : '<p>Nenhuma alteração registrada além da criação.</p>'}</div>` : ""}</div>
+      <div class="admin-actions"><button class="button admin-secondary" data-admin-detail="${escapeHtml(order.id)}">${isSelected ? "Ocultar detalhes" : "Ver detalhes"}</button><button class="button admin-secondary" data-copy-order="${escapeHtml(order.id)}">Copiar ID</button>${action ? `<button class="button primary" data-admin-action="${escapeHtml(action.route)}" data-admin-order="${escapeHtml(order.id)}">${escapeHtml(action.label)}</button>` : '<span class="admin-locked">Aguardando confirmação financeira confiável</span>'}</div>
     </article>`;
   }).join("");
   document.querySelectorAll("[data-admin-action]").forEach(button => button.addEventListener("click", () => runAdminAction(button.dataset.adminOrder, button.dataset.adminAction)));
+  document.querySelectorAll("[data-admin-detail]").forEach(button => button.addEventListener("click", () => toggleAdminDetail(button.dataset.adminDetail)));
+  document.querySelectorAll("[data-copy-order]").forEach(button => button.addEventListener("click", () => copyOrderId(button.dataset.copyOrder)));
+}
+
+function renderAdminSummary(orders) {
+  const summary = $("#admin-summary");
+  if (!summary) return;
+  const active = orders.filter(order => !["CANCELLED", "COMPLETED", "PAYMENT_EXPIRED", "REFUNDED"].includes(order.status)).length;
+  const awaiting = orders.filter(order => order.status === "AWAITING_PAYMENT").length;
+  const progressing = orders.filter(order => order.status === "IN_PROGRESS").length;
+  summary.innerHTML = `<div><small>EXIBINDO</small><strong>${orders.length}</strong></div><div><small>EM ABERTO</small><strong>${active}</strong></div><div><small>AGUARDANDO PAGAMENTO</small><strong>${awaiting}</strong></div><div><small>EM ANDAMENTO</small><strong>${progressing}</strong></div>`;
+}
+
+function bindAdminControls() {
+  const search = $("#admin-order-search");
+  const filter = $("#admin-status-filter");
+  if (search && !search.dataset.bound) {
+    search.dataset.bound = "true";
+    search.addEventListener("input", () => { state.adminSearch = search.value; renderAdminOrders(); });
+  }
+  if (filter && !filter.dataset.bound) {
+    filter.dataset.bound = "true";
+    filter.addEventListener("change", () => { state.adminStatus = filter.value; renderAdminOrders(); });
+  }
+  if (filter) {
+    const statuses = [...new Set(state.adminOrders.map(order => order.status).filter(Boolean))].sort();
+    filter.innerHTML = `<option value="ALL">Todos os status</option>${statuses.map(status => `<option value="${escapeHtml(status)}">${escapeHtml(statusLabel(status))}</option>`).join("")}`;
+    filter.value = statuses.includes(state.adminStatus) ? state.adminStatus : "ALL";
+  }
+  if (search) search.value = state.adminSearch;
+}
+
+async function toggleAdminDetail(orderId) {
+  if (state.adminSelectedOrderId === orderId) {
+    state.adminSelectedOrderId = null;
+    renderAdminOrders();
+    return;
+  }
+  state.adminSelectedOrderId = orderId;
+  renderAdminOrders();
+  if (state.adminEvents[orderId] !== undefined) return;
+  try {
+    const result = await api(`/admin/orderEvents?orderId=${encodeURIComponent(orderId)}`);
+    state.adminEvents[orderId] = result.events || [];
+  } catch (error) {
+    state.adminEvents[orderId] = [];
+    notify(error.message || "Não foi possível carregar o histórico.", "error");
+  }
+  if (state.adminSelectedOrderId === orderId) renderAdminOrders();
+}
+
+async function copyOrderId(orderId) {
+  try {
+    await navigator.clipboard.writeText(orderId);
+    notify("ID do pedido copiado.", "success");
+  } catch {
+    notify(`ID do pedido: ${orderId}`, "info");
+  }
 }
 
 async function openAdmin() {
   hideAll();
   show($("#admin-modal"));
+  ensureAdminPanelUi();
   const list = $("#admin-orders-list");
   if (!state.isAdmin) {
     list.innerHTML = '<p class="empty">Acesso administrativo não autorizado.</p>';
@@ -388,6 +475,9 @@ async function openAdmin() {
     const result = await api("/admin/orders");
     state.adminOrders = result.orders || [];
     state.adminCustomers = result.customers || {};
+    state.adminEvents = {};
+    state.adminSelectedOrderId = null;
+    bindAdminControls();
     renderAdminOrders();
   } catch (error) {
     list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
@@ -397,6 +487,8 @@ async function openAdmin() {
 async function runAdminAction(orderId, route) {
   const allowedRoutes = new Set(["/admin/openTicket", "/admin/startService", "/admin/completeService"]);
   if (!allowedRoutes.has(route)) return;
+  const labels = { "/admin/openTicket": "abrir o ticket", "/admin/startService": "iniciar o serviço", "/admin/completeService": "marcar o serviço como concluído" };
+  if (!window.confirm(`Confirmar ação: ${labels[route]}? Esta alteração será registrada no histórico.`)) return;
   try {
     const result = await api(route, { method: "POST", body: JSON.stringify({ orderId }) });
     notify(result.alreadyApplied ? "A ação já havia sido aplicada." : "Ação concluída e registrada na auditoria.", "success");
