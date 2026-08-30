@@ -94,6 +94,7 @@ async function requireSignedIn() {
 
 function updateAccountButton() {
   const button = $("[data-auth]");
+  document.querySelectorAll("[data-open-admin]").forEach(item => { item.hidden = !state.isAdmin; });
   if (!button) return;
   if (!state.user) {
     button.textContent = "Entrar com Google";
@@ -106,7 +107,6 @@ function updateAccountButton() {
   button.textContent = isAdmin ? "Admin · Sair" : `${firstName} · Sair`;
   button.classList.toggle("admin", isAdmin);
   button.title = state.user.email || "";
-  document.querySelectorAll("[data-open-admin]").forEach(item => { item.hidden = !state.isAdmin; });
 }
 
 async function loadAccount() {

@@ -1,3 +1,4 @@
+[hidden], .admin-only[hidden] { display: none !important; }
 :root { --ink: #0a0a0b; --paper: #f1f0ec; --muted: #aaa9a5; --line: #303033; --acid: #ceff32; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
