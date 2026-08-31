@@ -436,9 +436,41 @@ async function openTicket(ticketId) {
   }
 }
 
-function openOrder(orderId) {
-  const order = state.orders.find(item => item.id === orderId);
-  if (!order) return;
+function safeQrDataUrl(base64) {
+  return typeof base64 === "string" && /^[A-Za-z0-9+/=]+$/.test(base64) && base64.length <= 500000
+    ? `data:image/png;base64,${base64}`
+    : "";
+}
+
+function renderPixPayment(order, payment, loadError = "") {
+  if (payment?.status === "PENDING" && payment.expiresAt && new Date(payment.expiresAt).getTime() > Date.now()) {
+    const qrUrl = safeQrDataUrl(payment.qrCodeBase64);
+    return `<section class="pix-payment" aria-label="Pagamento por PIX">
+      <div class="pix-payment-head"><span>PIX EXCLUSIVO</span><strong>${currencyFromCents(payment.amountCents)}</strong></div>
+      <p class="pix-payment-intro">Use este QR Code ou o PIX Copia e Cola. Ele foi criado para este pedido pelo servidor.</p>
+      <div class="pix-code">${qrUrl ? `<img class="pix-qr-image" src="${qrUrl}" alt="QR Code PIX do pedido" />` : ""}<div><small>PIX COPIA E COLA</small><code>${escapeHtml(payment.pixCopyPaste || "Código indisponível")}</code><button type="button" class="button admin-secondary" data-copy-pix>Copiar código</button></div></div>
+      <p class="pix-expiry">Válido até ${escapeHtml(formatDateTime(payment.expiresAt))}.</p>
+      <p class="pix-waiting">Aguardando confirmação segura do pagamento pelo Mercado Pago. Enviar comprovante ou clicar em qualquer botão não confirma o pagamento.</p>
+    </section>`;
+  }
+  const expired = payment?.status === "PENDING" ? "O PIX anterior expirou. " : "";
+  return `<section class="pix-payment pix-payment-start"><div class="pix-payment-head"><span>PAGAMENTO PIX</span><strong>${currencyFromCents(order.totalCents)}</strong></div><p>${expired}Gere um PIX exclusivo com o total oficial deste pedido.</p>${loadError ? `<p class="pix-error">${escapeHtml(loadError)}</p>` : ""}<button class="button primary" type="button" data-create-pix>Gerar PIX seguro →</button></section>`;
+}
+
+function bindPixActions(order, payment) {
+  $("[data-copy-pix]")?.addEventListener("click", async button => {
+    try {
+      await navigator.clipboard.writeText(payment.pixCopyPaste);
+      button.currentTarget.textContent = "Código copiado ✓";
+      setTimeout(() => { if (button.currentTarget) button.currentTarget.textContent = "Copiar código"; }, 1800);
+    } catch {
+      notify("Não foi possível copiar automaticamente. Selecione o código e copie.", "error");
+    }
+  });
+  $("[data-create-pix]")?.addEventListener("click", event => createPixForOrder(order, event.currentTarget));
+}
+
+async function renderOrderModal(order, payment = null, loadError = "") {
   const modal = $("#tickets-modal .modal-box");
   modal.innerHTML = `
     <button class="close" data-close aria-label="Fechar">×</button>
@@ -454,11 +486,39 @@ function openOrder(orderId) {
       <div><small>TOTAL OFICIAL</small><strong>${currencyFromCents(order.totalCents)}</strong></div>
       <div><small>PAGAMENTO</small><strong>${escapeHtml(order.paymentStatus || "UNPAID")}</strong></div>
     </div>
-    <div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O PIX automático será conectado na próxima etapa.</p></div></div>
+    ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? renderPixPayment(order, payment, loadError) : `<div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O status do pagamento é atualizado apenas pelo servidor.</p></div></div>`}
     ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? `<button class="button cancel-order" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>` : ""}
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
   $("[data-back-orders]")?.addEventListener("click", openOrders);
   $("[data-cancel-order]")?.addEventListener("click", event => cancelOrder(order.id, event.currentTarget));
+  bindPixActions(order, payment);
+}
+
+async function openOrder(orderId) {
+  const order = state.orders.find(item => item.id === orderId);
+  if (!order) return;
+  await renderOrderModal(order);
+  if (order.status !== "AWAITING_PAYMENT" || order.paymentStatus !== "UNPAID") return;
+  try {
+    const result = await api(`/orders/${encodeURIComponent(order.id)}/payment`);
+    await renderOrderModal(order, result.payment || null);
+  } catch (error) {
+    await renderOrderModal(order, null, error.message || "Não foi possível consultar o PIX deste pedido.");
+  }
+}
+
+async function createPixForOrder(order, button) {
+  if (button?.disabled) return;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Gerando PIX..."; }
+  try {
+    const result = await api(`/orders/${encodeURIComponent(order.id)}/pix`, { method: "POST", body: "{}" });
+    await renderOrderModal(order, result.payment || null);
+  } catch (error) {
+    await renderOrderModal(order, null, error.message || "Não foi possível gerar o PIX.");
+  } finally {
+    if (button && document.body.contains(button)) { button.disabled = false; button.textContent = original || "Gerar PIX seguro →"; }
+  }
 }
 
 function renderReviews() {
