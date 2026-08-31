@@ -506,7 +506,10 @@ async function openOrder(orderId) {
   if (order.status !== "AWAITING_PAYMENT" || order.paymentStatus !== "UNPAID") return;
   try {
     const result = await api(`/orders/${encodeURIComponent(order.id)}/payment`);
-    await renderOrderModal(order, result.payment || null);
+    const latestOrder = result.order ? { ...order, ...result.order } : order;
+    state.orders = state.orders.map(item => item.id === latestOrder.id ? latestOrder : item);
+    await renderOrderModal(latestOrder, result.payment || null);
+    if (result.confirmed) notify("Pagamento confirmado. Seu ticket foi aberto automaticamente.", "success");
   } catch (error) {
     await renderOrderModal(order, null, error.message || "Não foi possível consultar o PIX deste pedido.");
   }
