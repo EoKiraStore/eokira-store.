@@ -457,6 +457,10 @@ function renderPixPayment(order, payment, loadError = "") {
   return `<section class="pix-payment pix-payment-start"><div class="pix-payment-head"><span>PAGAMENTO PIX</span><strong>${currencyFromCents(order.totalCents)}</strong></div><p>${expired}Gere um PIX exclusivo com o total oficial deste pedido.</p>${loadError ? `<p class="pix-error">${escapeHtml(loadError)}</p>` : ""}<button class="button primary" type="button" data-create-pix>Gerar PIX seguro →</button></section>`;
 }
 
+function paymentConfirmedCard(order) {
+  return `<div class="review-card payment-confirmed"><span>✓</span><div><strong>Pagamento confirmado</strong><p>O Mercado Pago confirmou o pagamento com segurança. Seu ticket foi aberto e já está disponível na área do cliente.</p><button class="button primary" type="button" data-open-confirmed-ticket>Ir para meu ticket →</button></div></div>`;
+}
+
 function bindPixActions(order, payment) {
   $("[data-copy-pix]")?.addEventListener("click", async button => {
     try {
@@ -486,10 +490,11 @@ async function renderOrderModal(order, payment = null, loadError = "") {
       <div><small>TOTAL OFICIAL</small><strong>${currencyFromCents(order.totalCents)}</strong></div>
       <div><small>PAGAMENTO</small><strong>${escapeHtml(order.paymentStatus || "UNPAID")}</strong></div>
     </div>
-    ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? renderPixPayment(order, payment, loadError) : `<div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O status do pagamento é atualizado apenas pelo servidor.</p></div></div>`}
+    ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? renderPixPayment(order, payment, loadError) : order.paymentStatus === "PAID" ? paymentConfirmedCard(order) : `<div class="review-card"><span>✓</span><div><strong>Pedido registrado</strong><p>O preço foi conferido no servidor. O status do pagamento é atualizado apenas pelo servidor.</p></div></div>`}
     ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? `<button class="button cancel-order" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>` : ""}
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
   $("[data-back-orders]")?.addEventListener("click", openOrders);
+  $("[data-open-confirmed-ticket]")?.addEventListener("click", openOrders);
   $("[data-cancel-order]")?.addEventListener("click", event => cancelOrder(order.id, event.currentTarget));
   bindPixActions(order, payment);
 }
@@ -547,7 +552,7 @@ function ensureAdminPanelUi() {
   const list = $("#admin-orders-list");
   if (!list || $("#admin-summary")) return;
   list.insertAdjacentHTML("beforebegin", `
-    <p class="admin-payment-note">Pagamentos só serão confirmados automaticamente quando a integração PIX for ativada.</p>
+    <p class="admin-payment-note">Pagamentos são confirmados apenas pelo webhook seguro do Mercado Pago. Quando aprovado, o ticket é aberto automaticamente.</p>
     <div class="admin-tabs" role="tablist"><button class="admin-tab is-active" type="button" data-admin-view="orders">Pedidos</button><button class="admin-tab" type="button" data-admin-view="tickets">Tickets</button><button class="admin-tab" type="button" data-admin-view="audit">Auditoria</button></div>
     <div class="admin-summary" id="admin-summary" aria-live="polite"></div>
     <div class="admin-toolbar">
