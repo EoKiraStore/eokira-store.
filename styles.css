@@ -189,6 +189,17 @@ main::after {
   .primary:hover, .cart-button:hover { transform: none; }
 }
 
+/* Modo leve: nenhuma animação contínua ou transição de interface. */
+html { scroll-behavior: auto; }
+*, *::before, *::after { animation: none !important; transition: none !important; }
+body {
+  background: #0b061b url("site-background.jpg") center / cover scroll no-repeat;
+}
+main { position: static; }
+main::before, main::after, .hero::before, .hero::after { content: none; }
+.hero { background: rgba(8, 5, 27, .76); box-shadow: none; }
+.site-header, .side-nav { backdrop-filter: none; }
+
 /* Painel administrativo: busca, filtros e histórico */
 .admin-payment-note { margin:14px 0 0; color:#b8b4d3; font-size:.78rem; line-height:1.45; }.admin-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:20px 0 12px; }.admin-summary > div { padding:12px; border:1px solid rgba(131,126,225,.33); background:rgba(34,25,77,.58); }.admin-summary small { display:block; color:#a9a3ca; font:.58rem "DM Mono",monospace; }.admin-summary strong { display:block; margin-top:6px; color:#d9f7ff; font-size:1.15rem; }.admin-toolbar { display:grid; grid-template-columns:1fr minmax(165px,.45fr); gap:10px; margin:0 0 18px; }.admin-toolbar label { display:grid; gap:6px; color:#bbb5da; font:.62rem "DM Mono",monospace; letter-spacing:.06em; }.admin-toolbar input,.admin-toolbar select { min-width:0; padding:11px 12px; border:1px solid rgba(144,134,225,.5); border-radius:4px; background:#100a31; color:#f8f7ff; font:inherit; }.admin-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; }.admin-actions .button { margin:0; }.admin-secondary { border:1px solid rgba(145,201,255,.55); color:#c9efff; background:rgba(44,67,145,.26); }.admin-detail { margin-top:15px; padding:13px; border-left:2px solid #79dfff; background:rgba(6,5,24,.4); }.admin-detail > strong { color:#d2f5ff; font-size:.78rem; }.admin-detail p { margin:8px 0 0; }.admin-timeline { display:grid; gap:9px; margin:11px 0 0; padding:0; list-style:none; }.admin-timeline li { display:grid; gap:3px; padding-left:12px; border-left:1px solid rgba(149,135,253,.55); }.admin-timeline strong { color:#fff; font-size:.78rem; }.admin-timeline span { color:#b6b1cc; font:.65rem "DM Mono",monospace; line-height:1.45; }@media(max-width:700px){.admin-summary{grid-template-columns:1fr 1fr}.admin-toolbar{grid-template-columns:1fr}.admin-actions{justify-content:flex-start}}
 
