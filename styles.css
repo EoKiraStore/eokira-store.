@@ -253,6 +253,19 @@ main { position: static; }
 .side-caption { margin: 2px 10px 15px; color: #7c739b; font: .6rem "DM Mono", monospace; letter-spacing: .12em; }
 .side-item { margin: 2px 0; border: 1px solid transparent; color: #d6d0e7; }
 .side-item:hover, .side-item.active { border-color: rgba(150, 93, 244, .35); background: linear-gradient(100deg, rgba(123, 59, 224, .52), rgba(40, 13, 85, .4)); }
+.side-logo { display: grid; gap: 2px; margin: 0 10px 18px; }
+.side-logo strong { font: italic 700 1.8rem "Space Grotesk", sans-serif; letter-spacing: -.12em; }
+.side-logo small { color: #a15df2; font: .48rem "DM Mono", monospace; letter-spacing: .24em; }
+.side-item { min-height: 39px; padding: 8px 10px; border-radius: 7px; font-size: .78rem; }
+.side-item > span { width: 20px; font-size: 1rem; }
+.side-coming { opacity: .52; cursor: default; }
+.side-coming:disabled { color: #a7a0b9; }
+.side-account { margin-top: 0; }
+.side-profile { display: grid; justify-items: center; gap: 5px; margin: 14px 0 0; padding: 14px 10px; border: 1px solid rgba(140, 82, 220, .22); border-radius: 10px; background: linear-gradient(160deg, rgba(21, 9, 44, .85), rgba(7, 4, 18, .7)); text-align: center; }
+.side-avatar { display: grid; place-items: center; width: 58px; height: 58px; border: 1px solid #a45bff; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #c294ff, #4f1886 55%, #0c061c 72%); color: #f0e5ff; font: 700 1rem "DM Mono", monospace; box-shadow: 0 0 18px rgba(156, 76, 255, .38); }
+.side-profile strong { color: #f2edff; font-size: .78rem; }
+.side-profile b { padding: 2px 5px; border-radius: 4px; background: #6322b1; color: #fff; font: .5rem "DM Mono", monospace; }
+.side-profile small { color: #9189a9; font: .48rem "DM Mono", monospace; letter-spacing: .03em; }
 .dashboard-home { min-height: calc(100vh - 76px); padding: clamp(28px, 4vw, 54px); background: linear-gradient(105deg, rgba(5, 2, 12, .20), rgba(10, 1, 16, .52)); }
 .dashboard-welcome { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin: 0 auto 22px; max-width: 1180px; }
 .dashboard-welcome h1 { margin: 8px 0 8px; color: #fff; font-size: clamp(2.1rem, 4vw, 3.4rem); line-height: .92; letter-spacing: -.075em; }

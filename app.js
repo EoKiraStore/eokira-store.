@@ -107,20 +107,24 @@ async function requireSignedIn() {
 }
 
 function updateAccountButton() {
-  const button = $("[data-auth]");
+  const buttons = document.querySelectorAll("[data-auth]");
   document.querySelectorAll("[data-open-admin]").forEach(item => { item.hidden = !state.isAdmin; });
-  if (!button) return;
+  if (!buttons.length) return;
   if (!state.user) {
-    button.textContent = "Entrar com Google";
-    button.classList.remove("admin");
-    button.title = "";
+    buttons.forEach(button => {
+      button.textContent = button.classList.contains("side-account") ? "Entrar" : "Entrar com Google";
+      button.classList.remove("admin");
+      button.title = "";
+    });
     return;
   }
   const isAdmin = state.isAdmin;
   const firstName = state.user.displayName?.split(" ")[0] || "Minha conta";
-  button.textContent = isAdmin ? "Admin · Sair" : `${firstName} · Sair`;
-  button.classList.toggle("admin", isAdmin);
-  button.title = state.user.email || "";
+  buttons.forEach(button => {
+    button.textContent = isAdmin ? "Admin · Sair" : `${firstName} · Sair`;
+    button.classList.toggle("admin", isAdmin);
+    button.title = state.user.email || "";
+  });
 }
 
 async function loadAccount() {
@@ -1044,7 +1048,7 @@ document.addEventListener("click", async event => {
     state.user ? await signOut(auth) : openLoginModal();
     return;
   }
-  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-open-admin],[data-close]");
+  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-orders],[data-open-reviews],[data-open-faq],[data-open-admin],[data-close]");
   if (!target) return;
   event.preventDefault();
   if (target.matches("[data-close]")) {
@@ -1054,7 +1058,8 @@ document.addEventListener("click", async event => {
   hideAll();
   if (target.matches("[data-open-products]")) show($("#produtos"));
   else if (target.matches("[data-open-cart]")) show(drawer);
-  else if (target.matches("[data-open-tickets]")) await openOrders();
+  else if (target.matches("[data-open-tickets]")) { state.customerView = "tickets"; await openOrders(); }
+  else if (target.matches("[data-open-orders]")) { state.customerView = "orders"; await openOrders(); }
   else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
   else if (target.matches("[data-open-faq]")) show($("#faq-modal"));
   else if (target.matches("[data-open-admin]")) await openAdmin();
