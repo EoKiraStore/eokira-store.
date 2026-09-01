@@ -111,15 +111,16 @@ body {
   animation: ink-nebula-drift 26s ease-in-out infinite alternate;
 }
 
-main { position: relative; isolation: isolate; }
+main { position: relative; isolation: auto; }
 main::before,
 main::after {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
 }
+main > *:not(.products) { position: relative; z-index: 1; }
 main::before {
   opacity: .55;
   background:
