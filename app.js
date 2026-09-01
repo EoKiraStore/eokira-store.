@@ -127,6 +127,61 @@ function updateAccountButton() {
   });
 }
 
+function profileInitials(name) {
+  const words = String(name || "EoKira").trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map(word => word[0]).join("").toUpperCase().slice(0, 2) || "EO";
+}
+
+function updateProfileCard() {
+  const account = state.account || {};
+  const name = account.profileName || state.user?.displayName || "Minha conta";
+  const avatar = $("#side-profile-avatar");
+  const card = $("[data-open-profile]");
+  if (avatar) avatar.textContent = profileInitials(name);
+  if (card) card.dataset.color = account.profileColor || "violet";
+  const nameNode = $("#side-profile-name");
+  const roleNode = $("#side-profile-role");
+  const bioNode = $("#side-profile-bio");
+  if (nameNode) nameNode.textContent = name;
+  if (roleNode) roleNode.textContent = state.isAdmin ? "ADMIN" : "CLIENTE";
+  if (bioNode) bioNode.textContent = account.profileBio || (state.user ? "Personalize seu perfil" : "Entre para personalizar");
+}
+
+function openProfile() {
+  if (!state.user) return openLoginModal();
+  const account = state.account || {};
+  $("#profile-name").value = account.profileName || state.user.displayName || "";
+  $("#profile-bio").value = account.profileBio || "";
+  const color = account.profileColor || "violet";
+  const selectedColor = $(`#profile-form input[name="profile-color"][value="${color}"]`);
+  if (selectedColor) selectedColor.checked = true;
+  hideAll();
+  show($("#profile-modal"));
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const payload = {
+    name: $("#profile-name").value,
+    bio: $("#profile-bio").value,
+    color: form.querySelector('input[name="profile-color"]:checked')?.value || "violet",
+  };
+  button.disabled = true;
+  try {
+    const profile = await api("/account/profile", { method: "POST", body: JSON.stringify(payload) });
+    state.account = { ...(state.account || {}), profileName: profile.profileName, profileBio: profile.profileBio, profileColor: profile.profileColor };
+    updateProfileCard();
+    hideAll();
+    notify("Perfil salvo com sucesso.", "success");
+  } catch (error) {
+    notify(error.message || "Não foi possível salvar o perfil.", "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadAccount() {
   if (!state.user) return;
   try {
@@ -136,6 +191,7 @@ async function loadAccount() {
     notify(error.message, "error");
   }
   updateAccountButton();
+  updateProfileCard();
 }
 
 async function loadProducts() {
@@ -1038,6 +1094,7 @@ $("#checkout-button")?.addEventListener("click", async () => {
   show($("#checkout-modal"));
 });
 $("#checkout-form")?.addEventListener("submit", submitOrders);
+$("#profile-form")?.addEventListener("submit", saveProfile);
 $("#login-google")?.addEventListener("click", enterWithGoogle);
 overlay?.addEventListener("click", hideAll);
 
@@ -1048,7 +1105,7 @@ document.addEventListener("click", async event => {
     state.user ? await signOut(auth) : openLoginModal();
     return;
   }
-  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-orders],[data-open-reviews],[data-open-faq],[data-open-admin],[data-close]");
+  const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-orders],[data-open-reviews],[data-open-faq],[data-open-admin],[data-open-profile],[data-close]");
   if (!target) return;
   event.preventDefault();
   if (target.matches("[data-close]")) {
@@ -1063,6 +1120,7 @@ document.addEventListener("click", async event => {
   else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
   else if (target.matches("[data-open-faq]")) show($("#faq-modal"));
   else if (target.matches("[data-open-admin]")) await openAdmin();
+  else if (target.matches("[data-open-profile]")) openProfile();
 });
 
 onAuthStateChanged(auth, async user => {
@@ -1089,6 +1147,7 @@ onAuthStateChanged(auth, async user => {
     state.cart = [];
     state.checkoutAttemptId = null;
     updateAccountButton();
+    updateProfileCard();
     renderCart();
   }
 });
