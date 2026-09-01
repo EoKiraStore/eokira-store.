@@ -195,7 +195,7 @@ html { scroll-behavior: auto; }
 body {
   background:
     linear-gradient(115deg, rgba(9, 3, 31, .36), rgba(13, 24, 72, .28)),
-    url("eokira-neon-torii-background.png") center center / cover no-repeat !important;
+    url("eokira-ink-game-background.png") center center / cover no-repeat !important;
   background-attachment: scroll !important;
 }
 body::before, body::after,
