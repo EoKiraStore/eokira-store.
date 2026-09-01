@@ -27,6 +27,9 @@ const $ = selector => document.querySelector(selector);
 const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
+let paymentPollTimer = null;
+let paymentPollOrderId = null;
+let paymentPollBusy = false;
 
 function currencyFromCents(value) {
   return (Number(value || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -46,6 +49,7 @@ function show(element) {
 
 function hideAll() {
   stopMessageListener();
+  stopPaymentPolling();
   document.querySelectorAll(".drawer.is-open, .modal.is-open, .products.is-open, .overlay.is-open")
     .forEach(element => element.classList.remove("is-open"));
 }
@@ -474,6 +478,41 @@ function bindPixActions(order, payment) {
   $("[data-create-pix]")?.addEventListener("click", event => createPixForOrder(order, event.currentTarget));
 }
 
+function stopPaymentPolling() {
+  if (paymentPollTimer) window.clearTimeout(paymentPollTimer);
+  paymentPollTimer = null;
+  paymentPollOrderId = null;
+  paymentPollBusy = false;
+}
+
+function startPaymentPolling(orderId) {
+  stopPaymentPolling();
+  paymentPollOrderId = orderId;
+  const checkAgain = async () => {
+    if (paymentPollBusy || paymentPollOrderId !== orderId || !$("#tickets-modal")?.classList.contains("is-open")) return stopPaymentPolling();
+    paymentPollBusy = true;
+    try {
+      const result = await api(`/orders/${encodeURIComponent(orderId)}/payment`);
+      const currentOrder = state.orders.find(item => item.id === orderId);
+      const latestOrder = result.order ? { ...(currentOrder || {}), ...result.order } : currentOrder;
+      if (!latestOrder) return stopPaymentPolling();
+      state.orders = state.orders.map(item => item.id === orderId ? latestOrder : item);
+      await renderOrderModal(latestOrder, result.payment || null);
+      if (result.confirmed || latestOrder.paymentStatus === "PAID") {
+        stopPaymentPolling();
+        notify("Pagamento confirmado. Seu ticket foi aberto automaticamente.", "success");
+        return;
+      }
+    } catch {
+      // A próxima tentativa continua disponível; não interrompe a compra por uma falha temporária.
+    } finally {
+      paymentPollBusy = false;
+    }
+    if (paymentPollOrderId === orderId) paymentPollTimer = window.setTimeout(checkAgain, 8000);
+  };
+  paymentPollTimer = window.setTimeout(checkAgain, 8000);
+}
+
 async function renderOrderModal(order, payment = null, loadError = "") {
   const modal = $("#tickets-modal .modal-box");
   modal.innerHTML = `
@@ -500,6 +539,7 @@ async function renderOrderModal(order, payment = null, loadError = "") {
 }
 
 async function openOrder(orderId) {
+  stopPaymentPolling();
   const order = state.orders.find(item => item.id === orderId);
   if (!order) return;
   await renderOrderModal(order);
@@ -509,7 +549,8 @@ async function openOrder(orderId) {
     const latestOrder = result.order ? { ...order, ...result.order } : order;
     state.orders = state.orders.map(item => item.id === latestOrder.id ? latestOrder : item);
     await renderOrderModal(latestOrder, result.payment || null);
-    if (result.confirmed) notify("Pagamento confirmado. Seu ticket foi aberto automaticamente.", "success");
+    if (result.confirmed || latestOrder.paymentStatus === "PAID") notify("Pagamento confirmado. Seu ticket foi aberto automaticamente.", "success");
+    else if (latestOrder.status === "AWAITING_PAYMENT" && latestOrder.paymentStatus === "UNPAID") startPaymentPolling(latestOrder.id);
   } catch (error) {
     await renderOrderModal(order, null, error.message || "Não foi possível consultar o PIX deste pedido.");
   }
