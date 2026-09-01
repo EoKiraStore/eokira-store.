@@ -279,8 +279,8 @@ function previewFinancials() {
 function renderCart() {
   const preview = previewFinancials();
   const count = state.cart.length;
-  $("#cart-count").textContent = count;
-  $("#side-cart-count").textContent = count;
+  if ($("#cart-count")) $("#cart-count").textContent = count;
+  if ($("#side-cart-count")) $("#side-cart-count").textContent = count;
   $("#cart-total").textContent = currencyFromCents(preview.totalCents);
   $("#checkout-button").disabled = count === 0 || state.submitting;
   $("#cart-items").innerHTML = count
