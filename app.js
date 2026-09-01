@@ -1105,7 +1105,7 @@ async function runTicketAction(ticketId, route, button) {
   }
 }
 
-async function openAdmin() {
+async function openAdmin(initialView = "orders") {
   hideAll();
   show($("#admin-modal"));
   ensureAdminPanelUi();
@@ -1132,7 +1132,7 @@ async function openAdmin() {
     state.auditNextPageToken = null;
     bindAdminControls();
     renderAdminOrders();
-    await switchAdminView("orders");
+    await switchAdminView(initialView === "tickets" ? "tickets" : "orders");
   } catch (error) {
     list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
   }
@@ -1236,7 +1236,10 @@ document.addEventListener("click", async event => {
   hideAll();
   if (target.matches("[data-open-products]")) show($("#produtos"));
   else if (target.matches("[data-open-cart]")) show(drawer);
-  else if (target.matches("[data-open-tickets]")) { state.customerView = "tickets"; await openOrders(); }
+  else if (target.matches("[data-open-tickets]")) {
+    if (state.isAdmin) await openAdmin("tickets");
+    else { state.customerView = "tickets"; await openOrders(); }
+  }
   else if (target.matches("[data-open-orders]")) { state.customerView = "orders"; await openOrders(); }
   else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
   else if (target.matches("[data-open-faq]")) { renderSupportConversation(); show($("#faq-modal")); }
