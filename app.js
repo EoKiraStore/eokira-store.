@@ -54,6 +54,12 @@ function hideAll() {
     .forEach(element => element.classList.remove("is-open"));
 }
 
+function openLoginModal() {
+  hideAll();
+  show($("#login-modal"));
+  $("#login-email")?.focus();
+}
+
 function notify(message, kind = "info") {
   let toast = $("#site-toast");
   if (!toast) {
@@ -85,6 +91,7 @@ async function enterWithGoogle() {
   try {
     await setPersistence(auth, browserLocalPersistence);
     await signInWithPopup(auth, googleProvider);
+    hideAll();
   } catch (error) {
     const message = error.code === "auth/unauthorized-domain"
       ? "O domínio do site ainda precisa ser autorizado no Firebase."
@@ -95,8 +102,8 @@ async function enterWithGoogle() {
 
 async function requireSignedIn() {
   if (state.user) return true;
-  await enterWithGoogle();
-  return Boolean(auth.currentUser);
+  openLoginModal();
+  return false;
 }
 
 function updateAccountButton() {
@@ -1027,13 +1034,14 @@ $("#checkout-button")?.addEventListener("click", async () => {
   show($("#checkout-modal"));
 });
 $("#checkout-form")?.addEventListener("submit", submitOrders);
+$("#login-google")?.addEventListener("click", enterWithGoogle);
 overlay?.addEventListener("click", hideAll);
 
 document.addEventListener("click", async event => {
   const authButton = event.target.closest("[data-auth]");
   if (authButton) {
     event.preventDefault();
-    state.user ? await signOut(auth) : await enterWithGoogle();
+    state.user ? await signOut(auth) : openLoginModal();
     return;
   }
   const target = event.target.closest("[data-open-products],[data-open-cart],[data-open-tickets],[data-open-reviews],[data-open-faq],[data-open-admin],[data-close]");
