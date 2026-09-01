@@ -577,6 +577,7 @@ function renderPixPayment(order, payment, loadError = "") {
       <div class="pix-code">${qrUrl ? `<img class="pix-qr-image" src="${qrUrl}" alt="QR Code PIX do pedido" />` : ""}<div><small>PIX COPIA E COLA</small><code>${escapeHtml(payment.pixCopyPaste || "Código indisponível")}</code><button type="button" class="button admin-secondary" data-copy-pix>Copiar código</button></div></div>
       <p class="pix-expiry">Válido até ${escapeHtml(formatDateTime(payment.expiresAt))}.</p>
       <p class="pix-waiting">Aguardando confirmação segura do pagamento pelo Mercado Pago. Enviar comprovante ou clicar em qualquer botão não confirma o pagamento.</p>
+      <button type="button" class="button admin-secondary" data-check-payment>Já paguei — conferir agora</button>
     </section>`;
   }
   const expired = payment?.status === "PENDING" ? "O PIX anterior expirou. " : "";
@@ -598,6 +599,30 @@ function bindPixActions(order, payment) {
     }
   });
   $("[data-create-pix]")?.addEventListener("click", event => createPixForOrder(order, event.currentTarget));
+  $("[data-check-payment]")?.addEventListener("click", event => checkPaymentNow(order, event.currentTarget));
+}
+
+async function checkPaymentNow(order, button) {
+  if (button?.disabled) return;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Conferindo pagamento..."; }
+  try {
+    const result = await api(`/orders/${encodeURIComponent(order.id)}/payment`);
+    const latestOrder = result.order ? { ...order, ...result.order } : order;
+    state.orders = state.orders.map(item => item.id === latestOrder.id ? latestOrder : item);
+    await renderOrderModal(latestOrder, result.payment || null);
+    if (result.confirmed || latestOrder.paymentStatus === "PAID") {
+      stopPaymentPolling();
+      notify("Pagamento confirmado. Seu ticket foi aberto automaticamente.", "success");
+    } else {
+      notify("O Mercado Pago ainda não confirmou este pagamento. Aguarde um instante e tente novamente.", "info");
+      startPaymentPolling(latestOrder.id);
+    }
+  } catch (error) {
+    notify(error.message || "Não foi possível conferir o pagamento agora.", "error");
+  } finally {
+    if (button && document.body.contains(button)) { button.disabled = false; button.textContent = original || "Já paguei — conferir agora"; }
+  }
 }
 
 function stopPaymentPolling() {
