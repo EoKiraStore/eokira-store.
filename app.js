@@ -470,7 +470,7 @@ async function openOrders() {
   list.innerHTML = '<p class="empty">Carregando seus tickets...</p>';
   try {
     const [orders, tickets] = await Promise.all([api("/orders"), api("/tickets")]);
-    state.orders = orders.orders || [];
+    state.orders = (orders.orders || []).filter(order => order.status !== "CANCELLED");
     state.tickets = tickets.tickets || [];
     state.ticketActors = tickets.actors || {};
     renderOrders();
