@@ -687,6 +687,7 @@ function ensureAdminPanelUi() {
     </section>
     <section id="admin-ticket-panel" class="admin-ticket-panel" hidden>
       <div class="admin-toolbar"><label><span>Buscar tickets</span><input id="admin-ticket-search" type="search" placeholder="Ticket, pedido, cliente ou produto" autocomplete="off" /></label><label><span>Status</span><select id="admin-ticket-status"><option value="ALL">Todos os status</option><option value="OPEN">Abertos</option><option value="IN_PROGRESS">Em atendimento</option><option value="CLOSED">Fechados</option><option value="ARCHIVED">Arquivados</option></select></label></div>
+      <button class="button admin-secondary" id="admin-reset-tickets" type="button">Apagar todos os tickets</button>
       <div id="admin-ticket-list"><p class="empty">Os tickets serão carregados ao abrir esta aba.</p></div>
       <button class="button admin-secondary" id="admin-ticket-more" type="button" hidden>Carregar mais</button>
     </section>`);
@@ -837,6 +838,29 @@ function bindAdminControls() {
   if (ticketSearch) ticketSearch.value = state.adminTicketSearch;
   if (ticketStatus) ticketStatus.value = state.adminTicketStatus;
   $("#admin-ticket-more")?.addEventListener("click", () => loadAdminTickets(false));
+  const resetTicketsButton = $("#admin-reset-tickets");
+  if (resetTicketsButton && !resetTicketsButton.dataset.bound) {
+    resetTicketsButton.dataset.bound = "true";
+    resetTicketsButton.addEventListener("click", resetAllTickets);
+  }
+}
+
+async function resetAllTickets(event) {
+  if (!state.isAdmin || !window.confirm("Apagar TODOS os tickets e mensagens? Pedidos e pagamentos não serão alterados.")) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    const result = await api("/admin/resetTickets", { method: "POST", body: JSON.stringify({ confirmation: "DELETE_ALL_TICKETS" }) });
+    state.adminTickets = [];
+    state.adminTicketActors = {};
+    state.adminTicketNextPageToken = null;
+    renderAdminTickets();
+    notify(`${result.removedTickets || 0} ticket(s) apagado(s).`, "success");
+  } catch (error) {
+    notify(error.message || "Não foi possível apagar os tickets.", "error");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function auditLabel(log) {
