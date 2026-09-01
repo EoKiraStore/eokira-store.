@@ -81,33 +81,33 @@ function renderSupportConversation() {
   if (!list) return;
   const messages = supportConversation.length
     ? supportConversation
-    : [{ role: "assistant", text: "Oi! Posso ajudar com produtos, PIX, pedidos e tickets." }];
+    : [{ role: "assistant", text: "Oi! Posso ajudar com produtos, PIX, pedidos, desconto e tickets." }];
   list.innerHTML = messages.map(message => `<article class="support-message ${message.role === "user" ? "user" : "assistant"}">${escapeHtml(message.text)}</article>`).join("");
   list.scrollTop = list.scrollHeight;
 }
 
-async function sendSupportMessage(event) {
+function freeSupportReply(message) {
+  const text = message.toLocaleLowerCase("pt-BR");
+  if (/(pix|pagar|pagamento|qr|copia e cola)/.test(text)) return "Depois de criar o pedido, gere o PIX exclusivo dele. O pagamento só é confirmado quando o Mercado Pago avisar o servidor. Não envie comprovantes, senhas ou códigos.";
+  if (/(ticket|atendimento|suporte)/.test(text)) return "Após o pagamento confirmado, o ticket abre automaticamente. Em Meus Tickets você acompanha o atendimento e conversa com a loja.";
+  if (/(pedido|acompanhar|status)/.test(text)) return "Use Meus Pedidos para ver o status e Meus Tickets para acompanhar o atendimento depois da confirmação.";
+  if (/(desconto|promo)/.test(text)) return "A primeira compra elegível pode receber 10% de desconto. O valor oficial é conferido pelo servidor antes do pedido.";
+  if (/(produto|power|roll|won|melhoria|comprar)/.test(text)) return "Você encontra Farm de Melhorias, Farm de Wons e Power Rolls na área de Produtos. Escolha a quantidade e adicione ao carrinho.";
+  return "Posso ajudar com produtos, PIX, pedidos, descontos e tickets. Tente perguntar, por exemplo: 'Como funciona o PIX?'";
+}
+
+function sendSupportMessage(event) {
   event.preventDefault();
-  if (!(await requireSignedIn())) return;
   const input = $("#support-ai-input");
-  const button = event.currentTarget.querySelector("button[type=submit]");
   const message = String(input?.value || "").trim();
   if (message.length < 2) return;
-  const history = supportConversation.slice(-6);
   supportConversation.push({ role: "user", text: message });
   renderSupportConversation();
   input.value = "";
-  button.disabled = true;
-  try {
-    const result = await api("/support/ai", { method: "POST", body: JSON.stringify({ message, history }) });
-    supportConversation.push({ role: "assistant", text: result.answer });
+  setTimeout(() => {
+    supportConversation.push({ role: "assistant", text: freeSupportReply(message) });
     renderSupportConversation();
-  } catch (error) {
-    supportConversation.push({ role: "assistant", text: error.message || "Não consegui responder agora. Tente novamente em instantes." });
-    renderSupportConversation();
-  } finally {
-    button.disabled = false;
-  }
+  }, 120);
 }
 
 async function api(path, options = {}, authenticated = true) {
