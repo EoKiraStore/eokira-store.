@@ -30,6 +30,7 @@ const drawer = $("#cart-drawer");
 let paymentPollTimer = null;
 let paymentPollOrderId = null;
 let paymentPollBusy = false;
+const supportConversation = [];
 
 function currencyFromCents(value) {
   return (Number(value || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -73,6 +74,40 @@ function notify(message, kind = "info") {
   clearTimeout(notify.timer);
   notify.timer = setTimeout(() => toast.classList.remove("is-visible"), 4500);
   requestAnimationFrame(() => toast.classList.add("is-visible"));
+}
+
+function renderSupportConversation() {
+  const list = $("#support-ai-messages");
+  if (!list) return;
+  const messages = supportConversation.length
+    ? supportConversation
+    : [{ role: "assistant", text: "Oi! Posso ajudar com produtos, PIX, pedidos e tickets." }];
+  list.innerHTML = messages.map(message => `<article class="support-message ${message.role === "user" ? "user" : "assistant"}">${escapeHtml(message.text)}</article>`).join("");
+  list.scrollTop = list.scrollHeight;
+}
+
+async function sendSupportMessage(event) {
+  event.preventDefault();
+  if (!(await requireSignedIn())) return;
+  const input = $("#support-ai-input");
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const message = String(input?.value || "").trim();
+  if (message.length < 2) return;
+  const history = supportConversation.slice(-6);
+  supportConversation.push({ role: "user", text: message });
+  renderSupportConversation();
+  input.value = "";
+  button.disabled = true;
+  try {
+    const result = await api("/support/ai", { method: "POST", body: JSON.stringify({ message, history }) });
+    supportConversation.push({ role: "assistant", text: result.answer });
+    renderSupportConversation();
+  } catch (error) {
+    supportConversation.push({ role: "assistant", text: error.message || "Não consegui responder agora. Tente novamente em instantes." });
+    renderSupportConversation();
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function api(path, options = {}, authenticated = true) {
@@ -1129,6 +1164,7 @@ $("#checkout-button")?.addEventListener("click", async () => {
 });
 $("#checkout-form")?.addEventListener("submit", submitOrders);
 $("#profile-form")?.addEventListener("submit", saveProfile);
+$("#support-ai-form")?.addEventListener("submit", sendSupportMessage);
 $("#login-google")?.addEventListener("click", enterWithGoogle);
 overlay?.addEventListener("click", hideAll);
 
@@ -1152,7 +1188,7 @@ document.addEventListener("click", async event => {
   else if (target.matches("[data-open-tickets]")) { state.customerView = "tickets"; await openOrders(); }
   else if (target.matches("[data-open-orders]")) { state.customerView = "orders"; await openOrders(); }
   else if (target.matches("[data-open-reviews]")) { renderReviews(); show($("#reviews-modal")); }
-  else if (target.matches("[data-open-faq]")) show($("#faq-modal"));
+  else if (target.matches("[data-open-faq]")) { renderSupportConversation(); show($("#faq-modal")); }
   else if (target.matches("[data-open-admin]")) await openAdmin();
   else if (target.matches("[data-open-profile]")) openProfile();
 });
