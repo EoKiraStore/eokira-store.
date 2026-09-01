@@ -195,7 +195,7 @@ html { scroll-behavior: auto; }
 body {
   background:
     linear-gradient(115deg, rgba(9, 3, 31, .36), rgba(13, 24, 72, .28)),
-    url("eokira-ink-game-background.png") center center / cover no-repeat !important;
+    url("eokira-neon-torii-background.png") center center / cover no-repeat !important;
   background-attachment: scroll !important;
 }
 body::before, body::after,
@@ -267,7 +267,7 @@ main { position: static; }
 .dashboard-panel-head small, .dashboard-info > small { color: #a16bff; font: .6rem "DM Mono", monospace; letter-spacing: .12em; }
 .dashboard-panel-head h2 { margin: 5px 0 0; color: #f9f6ff; font-size: 1.03rem; letter-spacing: -.03em; }
 .dashboard-link { color: #bf87ff; font-size: .72rem; font-weight: 700; }
-.dashboard-product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dashboard-product-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .dashboard-product-card { min-height: 188px; padding: 17px; border: 1px solid rgba(151, 99, 235, .26); border-radius: 10px; background: linear-gradient(150deg, rgba(25, 13, 53, .95), rgba(10, 6, 23, .95)); color: #fff; text-align: left; }
 .dashboard-product-card:hover { border-color: #9b65f3; background: linear-gradient(150deg, rgba(57, 26, 109, .95), rgba(12, 7, 31, .95)); }
 .dashboard-product-icon { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 24px; border-radius: 11px; background: radial-gradient(circle, #a35cff, #361478); color: #e8dbff; font: 700 1.1rem "DM Mono", monospace; box-shadow: 0 0 20px rgba(150, 74, 255, .35); }
@@ -291,6 +291,21 @@ main { position: static; }
 .dashboard-social > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .dashboard-social a { padding: 7px 9px; border: 1px solid rgba(151, 99, 235, .35); border-radius: 7px; color: #d9c2ff; font-size: .71rem; }
 .dashboard-social a:hover { border-color: #ba78ff; color: #fff; }
+.dashboard-home { min-height: 0; padding-top: 28px; }
+.dashboard-welcome { align-items: center; margin-bottom: 18px; }
+.dashboard-welcome h1 { margin: 5px 0; font-size: clamp(1.45rem, 2.4vw, 2rem); line-height: 1.05; letter-spacing: -.055em; }
+.dashboard-welcome h1 br { display: none; }
+.dashboard-welcome p:not(.eyebrow) { max-width: none; font-size: .8rem; }
+.dashboard-products-panel { padding: 17px; }
+.dashboard-product-card { min-height: 150px; padding: 14px; }
+.dashboard-product-icon { width: 36px; height: 36px; margin-bottom: 16px; border-radius: 9px; font-size: .95rem; }
+.dashboard-product-card b { margin-top: 13px; }
+.dashboard-panel { border-radius: 11px; }
+.site-header { position: relative; margin: 18px 24px 0 250px; min-height: 60px; border: 1px solid rgba(151, 99, 235, .25); border-radius: 15px; }
+.site-header, main, footer { margin-left: 250px; }
+.site-header { margin-left: 250px; }
+@media (max-width: 850px) { .site-header { margin: 12px 14px 0 80px; }.site-header, main, footer { margin-left: 80px; }.dashboard-product-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 540px) { .site-header { margin: 0; border-radius: 0; }.site-header, main, footer { margin-left: 0; }.dashboard-product-grid { grid-template-columns: 1fr; } }
 .dashboard-home + .products ~ .process, .ticket-explainer, .contact { display: none; }
 @media (max-width: 980px) { .dashboard-grid { grid-template-columns: 1fr; }.dashboard-quick { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }.dashboard-quick .dashboard-panel-head { grid-column: 1 / -1; }.dashboard-quick > button { min-width: 0; }.dashboard-product-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 650px) { .site-header { min-height: 66px; padding: 0 18px; }.dashboard-home { padding: 26px 16px; }.dashboard-welcome { align-items: stretch; flex-direction: column; }.dashboard-status { width: max-content; }.dashboard-product-grid, .dashboard-lower, .dashboard-quick { grid-template-columns: 1fr; }.dashboard-product-card { min-height: 130px; }.dashboard-product-icon { margin-bottom: 16px; }.dashboard-quick .dashboard-panel-head { grid-column: auto; } }
