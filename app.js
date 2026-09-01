@@ -24,7 +24,7 @@ const auth = getAuth(firebaseApp);
 const firestoreDb = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), productsRetryCount: 0, discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 let paymentPollTimer = null;
@@ -199,10 +199,16 @@ async function loadProducts() {
     const data = await api("/products", {}, false);
     state.products = new Map(data.products.map(product => [product.id, product]));
     state.discountConfig = data.discountConfig || { active: false };
+    state.productsRetryCount = 0;
     updateDisplayedPrices();
     renderCart();
   } catch (error) {
-    notify("Não foi possível carregar os preços do servidor.", "error");
+    if (state.productsRetryCount < 3) {
+      state.productsRetryCount += 1;
+      setTimeout(loadProducts, state.productsRetryCount * 2000);
+      return;
+    }
+    notify("Não foi possível carregar os preços do servidor. Atualize a página e tente novamente.", "error");
   }
 }
 
