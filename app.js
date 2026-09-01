@@ -229,11 +229,15 @@ function updateDisplayedPrices() {
   updateRollPrice();
 }
 
-function addItem(productId, quantity) {
-  const itemProduct = product(productId);
+async function addItem(productId, quantity) {
+  let itemProduct = product(productId);
   if (!itemProduct) {
-    notify("Aguarde os produtos terminarem de carregar.", "error");
-    return;
+    await loadProducts();
+    itemProduct = product(productId);
+    if (!itemProduct) {
+      notify("Não foi possível carregar esse produto. Atualize a página e tente novamente.", "error");
+      return;
+    }
   }
   const requested = Math.max(1, Math.floor(Number(quantity) || 1));
   const maximum = Number(itemProduct.maxQuantity || 1);
@@ -1078,13 +1082,13 @@ wonsQuantity?.addEventListener("input", updateWonsPrice);
 rollQuantity?.addEventListener("input", updateRollPrice);
 
 $("[data-product='farm_melhorias']")?.addEventListener("click", async () => {
-  if (await requireSignedIn()) addItem("farm_melhorias", 1);
+  if (await requireSignedIn()) await addItem("farm_melhorias", 1);
 });
 $("[data-wons]")?.addEventListener("click", async () => {
-  if (await requireSignedIn()) addItem("farm_wons_1b", wonsQuantity.value);
+  if (await requireSignedIn()) await addItem("farm_wons_1b", wonsQuantity.value);
 });
 $("[data-power-roll]")?.addEventListener("click", async () => {
-  if (await requireSignedIn()) addItem("power_roll", rollQuantity.value);
+  if (await requireSignedIn()) await addItem("power_roll", rollQuantity.value);
 });
 
 $("#checkout-button")?.addEventListener("click", async () => {
