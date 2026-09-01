@@ -245,6 +245,56 @@ main { position: static; }
 .login-divider span { height: 1px; background: rgba(177, 166, 235, .28); }
 .login-protected { margin: 0; color: #b8b3d7; font-size: .72rem; line-height: 1.45; }
 
+/* Painel principal da loja: visual de dashboard, sem animações contínuas. */
+.site-header { min-height: 76px; padding: 0 38px; border-bottom: 1px solid rgba(133, 75, 205, .26); background: rgba(7, 4, 18, .92); }
+.page-label { color: #e7ddff; font-weight: 700; letter-spacing: .02em; }
+.side-nav { width: 218px; padding: 28px 14px; background: rgba(5, 3, 13, .96); border-right-color: rgba(151, 92, 236, .24); }
+.side-logo { margin-bottom: 13px; color: #d69aff; font-size: 1.55rem; text-shadow: 0 0 20px rgba(177, 78, 255, .45); }
+.side-caption { margin: 2px 10px 15px; color: #7c739b; font: .6rem "DM Mono", monospace; letter-spacing: .12em; }
+.side-item { margin: 2px 0; border: 1px solid transparent; color: #d6d0e7; }
+.side-item:hover, .side-item.active { border-color: rgba(150, 93, 244, .35); background: linear-gradient(100deg, rgba(123, 59, 224, .52), rgba(40, 13, 85, .4)); }
+.dashboard-home { min-height: calc(100vh - 76px); padding: clamp(28px, 4vw, 54px); background: linear-gradient(105deg, rgba(5, 2, 12, .20), rgba(10, 1, 16, .52)); }
+.dashboard-welcome { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin: 0 auto 22px; max-width: 1180px; }
+.dashboard-welcome h1 { margin: 8px 0 8px; color: #fff; font-size: clamp(2.1rem, 4vw, 3.4rem); line-height: .92; letter-spacing: -.075em; }
+.dashboard-welcome h1 em { color: #be70ff; text-shadow: 0 0 22px rgba(165, 69, 255, .5); }
+.dashboard-welcome p:not(.eyebrow) { max-width: 520px; margin: 0; color: #c8bedb; line-height: 1.55; }
+.dashboard-status { display: inline-flex; align-items: center; gap: 8px; margin-top: 11px; padding: 9px 12px; border: 1px solid rgba(78, 234, 178, .25); border-radius: 9px; background: rgba(16, 54, 43, .5); color: #8df4c6; font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.dashboard-status span { width: 7px; height: 7px; border-radius: 50%; background: #50e8aa; box-shadow: 0 0 12px #50e8aa; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .36fr); gap: 16px; max-width: 1180px; margin: 0 auto; }
+.dashboard-panel { border: 1px solid rgba(151, 99, 235, .25); border-radius: 14px; background: linear-gradient(145deg, rgba(14, 7, 32, .88), rgba(6, 4, 16, .92)); box-shadow: 0 16px 42px rgba(0, 0, 0, .22); }
+.dashboard-products-panel { padding: 20px; }
+.dashboard-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 17px; }
+.dashboard-panel-head small, .dashboard-info > small { color: #a16bff; font: .6rem "DM Mono", monospace; letter-spacing: .12em; }
+.dashboard-panel-head h2 { margin: 5px 0 0; color: #f9f6ff; font-size: 1.03rem; letter-spacing: -.03em; }
+.dashboard-link { color: #bf87ff; font-size: .72rem; font-weight: 700; }
+.dashboard-product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.dashboard-product-card { min-height: 188px; padding: 17px; border: 1px solid rgba(151, 99, 235, .26); border-radius: 10px; background: linear-gradient(150deg, rgba(25, 13, 53, .95), rgba(10, 6, 23, .95)); color: #fff; text-align: left; }
+.dashboard-product-card:hover { border-color: #9b65f3; background: linear-gradient(150deg, rgba(57, 26, 109, .95), rgba(12, 7, 31, .95)); }
+.dashboard-product-icon { display: grid; place-items: center; width: 42px; height: 42px; margin-bottom: 24px; border-radius: 11px; background: radial-gradient(circle, #a35cff, #361478); color: #e8dbff; font: 700 1.1rem "DM Mono", monospace; box-shadow: 0 0 20px rgba(150, 74, 255, .35); }
+.dashboard-product-card strong, .dashboard-product-card small, .dashboard-product-card b { display: block; }
+.dashboard-product-card strong { font-size: .9rem; }
+.dashboard-product-card small { margin-top: 5px; color: #aaa1c4; font-size: .7rem; }
+.dashboard-product-card b { margin-top: 17px; color: #ca9bff; font-size: .76rem; }
+.dashboard-product-featured { background: linear-gradient(145deg, rgba(86, 23, 118, .95), rgba(10, 38, 86, .96)); }
+.dashboard-quick { padding: 20px; }
+.dashboard-quick > button { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 9px; width: 100%; padding: 11px 0; border-bottom: 1px solid rgba(151, 99, 235, .16); color: #e8e3f7; text-align: left; }
+.dashboard-quick > button:last-child { border: 0; }
+.dashboard-quick > button > span { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; background: rgba(106, 55, 191, .35); color: #cf9eff; }
+.dashboard-quick strong, .dashboard-quick small { display: block; }
+.dashboard-quick strong { font-size: .77rem; }
+.dashboard-quick small { margin-top: 3px; color: #928aa9; font-size: .64rem; }
+.dashboard-quick > button > b { color: #bc80ff; font-size: 1.15rem; }
+.dashboard-lower { display: grid; grid-template-columns: 1.35fr .65fr; gap: 16px; max-width: 1180px; margin: 16px auto 0; }
+.dashboard-info { min-height: 120px; padding: 19px 20px; }
+.dashboard-info h2 { margin: 7px 0; color: #f8f5ff; font-size: 1rem; letter-spacing: -.035em; }
+.dashboard-info p { margin: 0; color: #aaa1c4; font-size: .76rem; line-height: 1.45; }
+.dashboard-social > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.dashboard-social a { padding: 7px 9px; border: 1px solid rgba(151, 99, 235, .35); border-radius: 7px; color: #d9c2ff; font-size: .71rem; }
+.dashboard-social a:hover { border-color: #ba78ff; color: #fff; }
+.dashboard-home + .products ~ .process, .ticket-explainer, .contact { display: none; }
+@media (max-width: 980px) { .dashboard-grid { grid-template-columns: 1fr; }.dashboard-quick { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }.dashboard-quick .dashboard-panel-head { grid-column: 1 / -1; }.dashboard-quick > button { min-width: 0; }.dashboard-product-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 650px) { .site-header { min-height: 66px; padding: 0 18px; }.dashboard-home { padding: 26px 16px; }.dashboard-welcome { align-items: stretch; flex-direction: column; }.dashboard-status { width: max-content; }.dashboard-product-grid, .dashboard-lower, .dashboard-quick { grid-template-columns: 1fr; }.dashboard-product-card { min-height: 130px; }.dashboard-product-icon { margin-bottom: 16px; }.dashboard-quick .dashboard-panel-head { grid-column: auto; } }
+
 /* Painel administrativo: busca, filtros e histórico */
 .admin-payment-note { margin:14px 0 0; color:#b8b4d3; font-size:.78rem; line-height:1.45; }.admin-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:20px 0 12px; }.admin-summary > div { padding:12px; border:1px solid rgba(131,126,225,.33); background:rgba(34,25,77,.58); }.admin-summary small { display:block; color:#a9a3ca; font:.58rem "DM Mono",monospace; }.admin-summary strong { display:block; margin-top:6px; color:#d9f7ff; font-size:1.15rem; }.admin-toolbar { display:grid; grid-template-columns:1fr minmax(165px,.45fr); gap:10px; margin:0 0 18px; }.admin-toolbar label { display:grid; gap:6px; color:#bbb5da; font:.62rem "DM Mono",monospace; letter-spacing:.06em; }.admin-toolbar input,.admin-toolbar select { min-width:0; padding:11px 12px; border:1px solid rgba(144,134,225,.5); border-radius:4px; background:#100a31; color:#f8f7ff; font:inherit; }.admin-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; }.admin-actions .button { margin:0; }.admin-secondary { border:1px solid rgba(145,201,255,.55); color:#c9efff; background:rgba(44,67,145,.26); }.admin-detail { margin-top:15px; padding:13px; border-left:2px solid #79dfff; background:rgba(6,5,24,.4); }.admin-detail > strong { color:#d2f5ff; font-size:.78rem; }.admin-detail p { margin:8px 0 0; }.admin-timeline { display:grid; gap:9px; margin:11px 0 0; padding:0; list-style:none; }.admin-timeline li { display:grid; gap:3px; padding-left:12px; border-left:1px solid rgba(149,135,253,.55); }.admin-timeline strong { color:#fff; font-size:.78rem; }.admin-timeline span { color:#b6b1cc; font:.65rem "DM Mono",monospace; line-height:1.45; }@media(max-width:700px){.admin-summary{grid-template-columns:1fr 1fr}.admin-toolbar{grid-template-columns:1fr}.admin-actions{justify-content:flex-start}}
 
