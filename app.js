@@ -88,6 +88,7 @@ function renderSupportConversation() {
 
 function freeSupportReply(message) {
   const text = message.toLocaleLowerCase("pt-BR");
+  if (/(confi[aá]vel|seguro|seguran[cç]a|golpe|confiar)/.test(text)) return "Use sempre o endereço oficial da EoKira. Os preços e pedidos são conferidos pelo servidor, e o PIX é gerado para cada pedido. A loja nunca deve pedir senha, código PIX, token ou dados bancários pelo chat.";
   if (/(pix|pagar|pagamento|qr|copia e cola)/.test(text)) return "Depois de criar o pedido, gere o PIX exclusivo dele. O pagamento só é confirmado quando o Mercado Pago avisar o servidor. Não envie comprovantes, senhas ou códigos.";
   if (/(ticket|atendimento|suporte)/.test(text)) return "Após o pagamento confirmado, o ticket abre automaticamente. Em Meus Tickets você acompanha o atendimento e conversa com a loja.";
   if (/(pedido|acompanhar|status)/.test(text)) return "Use Meus Pedidos para ver o status e Meus Tickets para acompanhar o atendimento depois da confirmação.";
