@@ -108,7 +108,8 @@ body {
   background-size: 155% 155%, 150% 150%, 145% 145%, cover, cover;
   background-position: 0% 0%, 100% 20%, 45% 100%, center, center;
   background-attachment: fixed;
-  animation: ink-nebula-drift 26s ease-in-out infinite alternate;
+  /* Fundo estático: evita repintura constante em celular e PC mais fraco. */
+  animation: none;
 }
 
 main { position: relative; isolation: auto; }
@@ -128,7 +129,7 @@ main::before {
     radial-gradient(circle at 72% 31%, rgba(110, 228, 255, .28) 0 1px, transparent 2px),
     radial-gradient(circle at 42% 74%, rgba(184, 130, 255, .20) 0 1px, transparent 2px);
   background-size: 92px 92px, 127px 127px, 173px 173px;
-  animation: ink-stars-flow 34s linear infinite;
+  animation: none;
 }
 main::after {
   opacity: .40;
@@ -152,8 +153,8 @@ main::after {
   top: -42%;
   border-radius: 50%;
   background: conic-gradient(from 30deg, transparent, rgba(102, 72, 255, .26), rgba(75, 207, 255, .16), transparent 52%);
-  filter: blur(24px);
-  animation: ink-aura-spin 22s linear infinite;
+  filter: blur(12px);
+  animation: none;
 }
 .hero::after {
   content: "";
