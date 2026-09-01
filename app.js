@@ -588,6 +588,21 @@ function paymentConfirmedCard(order) {
   return `<div class="review-card payment-confirmed"><span>✓</span><div><strong>Pagamento confirmado</strong><p>O Mercado Pago confirmou o pagamento com segurança. Seu ticket foi aberto e já está disponível na área do cliente.</p><button class="button primary" type="button" data-open-confirmed-ticket>Ir para meu ticket →</button></div></div>`;
 }
 
+async function openConfirmedTicket(orderId) {
+  try {
+    const result = await api("/tickets");
+    state.tickets = result.tickets || [];
+    const ticket = state.tickets.find(item => item.orderId === orderId);
+    if (!ticket) {
+      notify("O pagamento foi confirmado. O ticket está sendo preparado; tente novamente em alguns segundos.", "info");
+      return;
+    }
+    await openTicket(ticket.id);
+  } catch (error) {
+    notify(error.message || "Não foi possível abrir seu ticket agora.", "error");
+  }
+}
+
 function bindPixActions(order, payment) {
   $("[data-copy-pix]")?.addEventListener("click", async button => {
     try {
@@ -680,7 +695,7 @@ async function renderOrderModal(order, payment = null, loadError = "") {
     ${order.status === "AWAITING_PAYMENT" && order.paymentStatus === "UNPAID" ? `<button class="button cancel-order" data-cancel-order="${escapeHtml(order.id)}">Cancelar pedido</button>` : ""}
     <button class="button primary" data-back-orders>Voltar aos pedidos</button>`;
   $("[data-back-orders]")?.addEventListener("click", openOrders);
-  $("[data-open-confirmed-ticket]")?.addEventListener("click", openOrders);
+  $("[data-open-confirmed-ticket]")?.addEventListener("click", () => openConfirmedTicket(order.id));
   $("[data-cancel-order]")?.addEventListener("click", event => cancelOrder(order.id, event.currentTarget));
   bindPixActions(order, payment);
 }
