@@ -194,7 +194,7 @@ html { scroll-behavior: auto; }
 *, *::before, *::after { animation: none !important; transition: none !important; }
 body {
   background:
-    linear-gradient(115deg, rgba(7, 3, 25, .72), rgba(8, 24, 70, .58)),
+    linear-gradient(115deg, rgba(9, 3, 31, .36), rgba(13, 24, 72, .28)),
     url("site-background.jpg") center / cover no-repeat !important;
   background-attachment: scroll !important;
 }
@@ -203,7 +203,7 @@ main::before, main::after, .hero::before, .hero::after,
 .star-field, .glow, .product-art { display: none !important; }
 main { position: static; }
 .site-header, .side-nav { backdrop-filter: none; background: #08051b; }
-.hero, .process, .ticket-explainer, .contact { background: rgba(11, 8, 34, .78); box-shadow: none; }
+.hero, .process, .ticket-explainer, .contact { background: rgba(8, 5, 27, .48); box-shadow: none; }
 .hero-visual, .hero-art { background: #121038; box-shadow: none; }
 .hero-art img, .hero-visual img { filter: none; mix-blend-mode: normal; opacity: .72; }
 .product-card, .product-card.featured, .products, .ticket-demo, .ticket-view-head { box-shadow: none; }
