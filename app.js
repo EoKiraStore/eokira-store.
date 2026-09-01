@@ -600,7 +600,9 @@ async function openTicket(ticketId) {
     const result = await api(`/tickets/${encodeURIComponent(ticketId)}`);
     const ticket = result.ticket;
     const relatedOrder = state.orders.find(order => order.id === ticket.orderId);
-    const purchaseSummary = ticket.productSummary || (relatedOrder ? orderProduct(relatedOrder) : "Produto do pedido");
+    const purchaseSummary = result.purchase?.items?.length
+      ? result.purchase.items.map(item => `${item.quantity} × ${item.name}`).join(" + ")
+      : ticket.productSummary || (relatedOrder ? orderProduct(relatedOrder) : "Produto do pedido");
     const ticketOwner = result.actors?.[ticket.ownerId] || {};
     const orderStatus = relatedOrder?.status ? statusLabel(relatedOrder.status) : "PAGAMENTO CONFIRMADO";
     modal.innerHTML = `
@@ -610,14 +612,31 @@ async function openTicket(ticketId) {
       <div class="order-summary"><div><small>STATUS DO TICKET</small><strong>${escapeHtml(ticketStatusLabel(ticket.status))}</strong></div><div><small>STATUS DO PEDIDO</small><strong>${escapeHtml(orderStatus)}</strong></div><div><small>CRIADO EM</small><strong>${escapeHtml(formatDateTime(ticket.createdAt))}</strong></div><div><small>ÚLTIMA ATUALIZAÇÃO</small><strong>${escapeHtml(formatDateTime(ticket.updatedAt))}</strong></div></div>
       <section class="ticket-chat discord-ticket-chat" aria-label="Conversa do ticket"><div class="ticket-chat-head"><div><strong># atendimento-do-pedido</strong><small>Canal privado entre cliente e atendimento</small></div><span class="ticket-chat-live">● ${state.isAdmin ? "Você está como atendimento" : "Atendimento disponível"}</span></div><div class="messages" id="ticket-messages"><p class="empty">Carregando mensagens...</p></div>${["OPEN", "IN_PROGRESS"].includes(ticket.status) ? `<form class="message-form" id="ticket-message-form"><label class="sr-only" for="ticket-message-text">Mensagem</label><textarea id="ticket-message-text" maxlength="2000" rows="3" placeholder="Escreva uma mensagem para ${state.isAdmin ? "o cliente" : "o atendimento"}..."></textarea><button class="button primary" type="submit">Enviar mensagem <span>↑</span></button></form><small class="message-limit">Canal privado · até 2.000 caracteres por mensagem.</small>` : `<div class="ticket-chat-locked">🔒 Este ticket foi fechado ou arquivado. O histórico continua disponível.</div>`}</section>
       <div class="ticket-history"><strong>Histórico</strong>${result.events?.length ? `<ol class="admin-timeline">${result.events.map(event => { const actor = result.actors?.[event.actorUid] || {}; return `<li><strong>${escapeHtml(event.reason || event.type || "ALTERAÇÃO")}</strong><span>${escapeHtml(actor.displayName || "Sistema/atendimento")} · ${escapeHtml(formatDateTime(event.createdAt))}</span></li>`; }).join("")}</ol>` : '<p>Histórico anterior indisponível.</p>'}</div>
-      ${relatedOrder ? `<button class="button admin-secondary" data-ticket-order="${escapeHtml(relatedOrder.id)}">Ver pedido</button>` : ""}<button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
+      ${state.isAdmin && ["OPEN", "IN_PROGRESS"].includes(ticket.status) ? `<button class="button close-ticket-button" data-close-ticket="${escapeHtml(ticket.id)}">Fechar ticket</button>` : ""}${relatedOrder ? `<button class="button admin-secondary" data-ticket-order="${escapeHtml(relatedOrder.id)}">Ver pedido</button>` : ""}<button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
     $("[data-back-tickets]")?.addEventListener("click", openOrders);
     $("[data-ticket-order]")?.addEventListener("click", () => openOrder(ticket.orderId));
+    $("[data-close-ticket]")?.addEventListener("click", event => closeTicketFromConversation(ticket.id, event.currentTarget));
     $("#ticket-message-form")?.addEventListener("submit", event => { event.preventDefault(); sendTicketMessage(ticket.id, event.currentTarget); });
     startMessageListener(ticket);
   } catch (error) {
     modal.innerHTML = `<button class="close" data-close aria-label="Fechar">×</button><p class="empty">${escapeHtml(error.message || "Não foi possível carregar o ticket.")}</p><button class="button primary" data-back-tickets>Voltar aos tickets</button>`;
     $("[data-back-tickets]")?.addEventListener("click", openOrders);
+  }
+}
+
+async function closeTicketFromConversation(ticketId, button) {
+  if (!state.isAdmin || !window.confirm("Fechar este ticket? O cliente não poderá enviar novas mensagens.")) return;
+  const original = button?.textContent;
+  if (button) { button.disabled = true; button.textContent = "Fechando..."; }
+  try {
+    await api("/admin/ticket/close", { method: "POST", body: JSON.stringify({ ticketId }) });
+    notify("Ticket fechado. O histórico continua salvo.", "success");
+    await refreshAdminOpenTickets();
+    await openTicket(ticketId);
+  } catch (error) {
+    notify(error.message || "Não foi possível fechar o ticket.", "error");
+  } finally {
+    if (button && document.body.contains(button)) { button.disabled = false; button.textContent = original || "Fechar ticket"; }
   }
 }
 
