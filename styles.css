@@ -193,15 +193,17 @@ main::after {
 html { scroll-behavior: auto; }
 *, *::before, *::after { animation: none !important; transition: none !important; }
 body {
-  background: #08051b !important;
-  background-image: none !important;
+  background:
+    linear-gradient(115deg, rgba(7, 3, 25, .72), rgba(8, 24, 70, .58)),
+    url("site-background.jpg") center / cover no-repeat !important;
+  background-attachment: scroll !important;
 }
 body::before, body::after,
 main::before, main::after, .hero::before, .hero::after,
 .star-field, .glow, .product-art { display: none !important; }
 main { position: static; }
 .site-header, .side-nav { backdrop-filter: none; background: #08051b; }
-.hero, .process, .ticket-explainer, .contact { background: #0b0822; box-shadow: none; }
+.hero, .process, .ticket-explainer, .contact { background: rgba(11, 8, 34, .78); box-shadow: none; }
 .hero-visual, .hero-art { background: #121038; box-shadow: none; }
 .hero-art img, .hero-visual img { filter: none; mix-blend-mode: normal; opacity: .72; }
 .product-card, .product-card.featured, .products, .ticket-demo, .ticket-view-head { box-shadow: none; }
