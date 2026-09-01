@@ -24,7 +24,7 @@ const auth = getAuth(firebaseApp);
 const firestoreDb = getFirestore(firebaseApp);
 const googleProvider = new GoogleAuthProvider();
 const $ = selector => document.querySelector(selector);
-const state = { user: null, account: null, isAdmin: false, products: new Map(), productsRetryCount: 0, discountConfig: { active: false }, cart: [], orders: [], tickets: [], customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
+const state = { user: null, account: null, isAdmin: false, products: new Map(), productsRetryCount: 0, discountConfig: { active: false }, cart: [], orders: [], tickets: [], ticketActors: {}, customerView: "tickets", activeTicketId: null, unsubscribeMessages: null, messageSending: false, adminOrders: [], adminTickets: [], adminTicketActors: {}, adminTicketNextPageToken: null, adminSelectedTicketId: null, adminCustomers: {}, adminEvents: {}, adminEventActors: {}, adminSearch: "", adminStatus: "ALL", adminTicketSearch: "", adminTicketStatus: "ALL", adminSelectedOrderId: null, adminView: "orders", auditLogs: [], auditActors: {}, auditSearch: "", auditCategory: "ALL", auditPeriod: "ALL", auditNextPageToken: null, auditLoading: false, checkoutAttemptId: null, adminActionInFlight: false, cancelInFlight: false, submitting: false };
 const overlay = $("#overlay");
 const drawer = $("#cart-drawer");
 let paymentPollTimer = null;
@@ -414,7 +414,7 @@ function ticketStatusLabel(status) {
 }
 
 function customerTabs() {
-  return `<div class="customer-tabs"><button type="button" class="customer-tab ${state.customerView === "tickets" ? "is-active" : ""}" data-customer-view="tickets">Meus tickets</button><button type="button" class="customer-tab ${state.customerView === "orders" ? "is-active" : ""}" data-customer-view="orders">Meus pedidos</button></div>`;
+  return `<div class="customer-tabs"><button type="button" class="customer-tab ${state.customerView === "tickets" ? "is-active" : ""}" data-customer-view="tickets">${state.isAdmin ? "Tickets dos clientes" : "Meus tickets"}</button><button type="button" class="customer-tab ${state.customerView === "orders" ? "is-active" : ""}" data-customer-view="orders">Meus pedidos</button></div>`;
 }
 
 function renderOrders() {
@@ -427,12 +427,16 @@ function renderOrders() {
     return;
   }
   if (state.customerView === "tickets") {
-    list.innerHTML = `${customerTabs()}${state.tickets.length ? state.tickets.map(ticket => `
+    list.innerHTML = `${customerTabs()}${state.tickets.length ? state.tickets.map(ticket => {
+      const owner = state.ticketActors[ticket.ownerId] || {};
+      const unread = state.isAdmin ? Number(ticket.adminUnreadCount || 0) : Number(ticket.customerUnreadCount || 0);
+      return `
       <article class="ticket ticket-new">
         <div class="ticket-orb">◌</div>
-        <div class="ticket-data"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}${Number(ticket.customerUnreadCount || 0) ? ` <b class="ticket-unread">${Number(ticket.customerUnreadCount || 0)} nova${Number(ticket.customerUnreadCount || 0) === 1 ? "" : "s"}</b>` : ""}</h3><p>${escapeHtml(ticket.lastMessagePreview || `Pedido #${ticket.orderId.slice(0, 10).toUpperCase()}`)}</p><small>${ticket.lastMessageAt ? `Última mensagem em ${escapeHtml(formatDateTime(ticket.lastMessageAt))}` : `Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}`}</small></div>
+        <div class="ticket-data"><span class="ticket-status pending">${escapeHtml(ticketStatusLabel(ticket.status))}</span><h3>#${escapeHtml(ticket.id.slice(-10).toUpperCase())} · ${escapeHtml(ticket.productSummary || "Atendimento")}${unread ? ` <b class="ticket-unread">${unread} nova${unread === 1 ? "" : "s"}</b>` : ""}</h3><p>${escapeHtml(ticket.lastMessagePreview || `Pedido #${ticket.orderId.slice(0, 10).toUpperCase()}`)}</p><small>${state.isAdmin ? `Cliente: ${escapeHtml(owner.displayName || owner.email || ticket.ownerId)} · ` : ""}${ticket.lastMessageAt ? `Última mensagem em ${escapeHtml(formatDateTime(ticket.lastMessageAt))}` : `Atualizado em ${escapeHtml(formatDateTime(ticket.updatedAt))}`}</small></div>
         <button data-ticket="${escapeHtml(ticket.id)}">Ver ticket →</button>
-      </article>`).join("") : '<div class="empty-info"><span>◌</span><strong>Nenhum ticket aberto</strong><p>Quando o atendimento do seu pedido for liberado, ele aparecerá aqui.</p></div>'}`;
+      </article>`;
+    }).join("") : '<div class="empty-info"><span>◌</span><strong>Nenhum ticket aberto</strong><p>Quando o atendimento de um pedido for liberado, ele aparecerá aqui.</p></div>'}`;
     document.querySelectorAll("[data-ticket]").forEach(button => button.onclick = () => openTicket(button.dataset.ticket));
   } else list.innerHTML = `${customerTabs()}${state.orders.length ? state.orders.map(order => `
     <article class="ticket ticket-new">
@@ -452,6 +456,12 @@ function renderOrders() {
 async function openOrders() {
   hideAll();
   show($("#tickets-modal"));
+  const modal = $("#tickets-modal .modal-box");
+  if (!$("#tickets-list") && modal) {
+    modal.innerHTML = '<button class="close" data-close aria-label="Fechar">×</button><p class="eyebrow"><i></i> ÁREA DO CLIENTE</p><h2>Meus tickets</h2><div id="tickets-list"><p class="empty">Carregando tickets...</p></div>';
+  }
+  const heading = $("#tickets-modal h2");
+  if (heading) heading.textContent = state.isAdmin && state.customerView === "tickets" ? "Tickets dos clientes" : "Meus tickets";
   const list = $("#tickets-list");
   if (!state.user) {
     renderOrders();
@@ -462,6 +472,7 @@ async function openOrders() {
     const [orders, tickets] = await Promise.all([api("/orders"), api("/tickets")]);
     state.orders = orders.orders || [];
     state.tickets = tickets.tickets || [];
+    state.ticketActors = tickets.actors || {};
     renderOrders();
   } catch (error) {
     list.innerHTML = `<p class="empty">${escapeHtml(error.message)}</p>`;
@@ -1258,6 +1269,7 @@ onAuthStateChanged(auth, async user => {
   } else {
     state.orders = [];
     state.tickets = [];
+    state.ticketActors = {};
     state.adminOrders = [];
     state.adminTickets = [];
     state.adminTicketActors = {};
