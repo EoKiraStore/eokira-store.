@@ -111,6 +111,15 @@ function sendSupportMessage(event) {
   }, 120);
 }
 
+function askSupportQuestion(question) {
+  supportConversation.push({ role: "user", text: question });
+  renderSupportConversation();
+  setTimeout(() => {
+    supportConversation.push({ role: "assistant", text: freeSupportReply(question) });
+    renderSupportConversation();
+  }, 120);
+}
+
 async function api(path, options = {}, authenticated = true) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (authenticated) {
@@ -1166,6 +1175,7 @@ $("#checkout-button")?.addEventListener("click", async () => {
 $("#checkout-form")?.addEventListener("submit", submitOrders);
 $("#profile-form")?.addEventListener("submit", saveProfile);
 $("#support-ai-form")?.addEventListener("submit", sendSupportMessage);
+document.querySelectorAll("[data-support-question]").forEach(button => button.addEventListener("click", () => askSupportQuestion(button.dataset.supportQuestion)));
 $("#login-google")?.addEventListener("click", enterWithGoogle);
 overlay?.addEventListener("click", hideAll);
 
